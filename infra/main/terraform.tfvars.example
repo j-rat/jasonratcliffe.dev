@@ -1,0 +1,6 @@
+# Copy to terraform.tfvars (git-ignored) only for a laptop deploy (make deploy).
+# CI passes contact_to_email from the CONTACT_TO_EMAIL secret instead.
+contact_to_email = "you@example.com" # inbox that receives contact-form messages
+# price_class         = "PriceClass_100"
+# contact_rate_limit  = 1   # requests per second
+# contact_burst_limit = 5

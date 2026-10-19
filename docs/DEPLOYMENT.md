@@ -374,16 +374,31 @@ gh secret list && gh secret list --env production
    ☐ *Allow GitHub Actions to create and approve pull requests* unchecked. Each job asks for exactly what it needs
    (`id-token: write` only where AWS is used).
 
-### 5.4 Confirm the OIDC subject format is the default
+### 5.4 Match the OIDC subject format
 
-The trust policies expect GitHub's default `sub` claim. If your account or org ever customized it, the
-roles won't match.
+The trust policies must match the `sub` claim GitHub puts in each job's token. Check which format your
+repo uses:
 
 ```bash
 gh api repos/<owner>/<repo>/actions/oidc/customization/sub
 ```
 
-✅ **Expected:** `{"use_default":true}`. A 404 also means the default.
+- **`{"use_default":true}`** (or a 404): the classic format, `repo:<owner>/<repo>:...`. Nothing to do.
+- **`"use_immutable_subject":true`**: GitHub sends `repo:<owner>@<owner-id>/<repo>@<repo-id>:...`. This is
+  the stronger format: a renamed or recreated repo with the same name can't assume your roles. Add the
+  IDs from `sub_claim_prefix` to `infra/bootstrap/terraform.tfvars`, then re-run bootstrap:
+
+  ```hcl
+  github_ids = { owner = 12345678, repository = 123456789 }
+  ```
+
+  ```bash
+  make bootstrap-plan    # expect: 0 to add, 2 to change (the two role trust policies)
+  make bootstrap-apply
+  ```
+
+❌ **`Not authorized to perform sts:AssumeRoleWithWebIdentity`** in the *configure-aws-credentials* step
+means the format and the trust policy disagree. Run the check above.
 
 ### 5.5 Protect `main` (after the first push)
 

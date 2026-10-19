@@ -1,0 +1,6 @@
+# Copy to infra/backend.hcl (git-ignored). Used by both stacks:
+#   terraform init -backend-config=../backend.hcl
+bucket       = "resume-site-tfstate-<account-id>" # terraform -chdir=infra/bootstrap output -raw state_bucket
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true

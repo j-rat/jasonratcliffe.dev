@@ -7,8 +7,9 @@ data "aws_route53_zone" "site" {
 }
 
 # Created by the bootstrap stack; every role this stack creates must carry it.
+# Looked up by ARN: a lookup by name calls iam:ListPolicies, which the apply role doesn't have.
 data "aws_iam_policy" "workload_boundary" {
-  name = "boundary-${var.project}-workload"
+  arn = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:policy/boundary-${var.project}-workload"
 }
 
 locals {

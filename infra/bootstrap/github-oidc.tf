@@ -7,7 +7,11 @@
 # permissions boundary below, so a compromised pipeline cannot mint an admin role.
 
 locals {
-  oidc_host        = "token.actions.githubusercontent.com"
+  oidc_host = "token.actions.githubusercontent.com"
+  # Immutable subjects pin the numeric IDs, so a renamed or recreated repo with the same name can't assume these roles.
+  github_owner     = split("/", var.github_repository)[0]
+  github_repo      = split("/", var.github_repository)[1]
+  sub_prefix       = var.github_ids == null ? "repo:${var.github_repository}" : "repo:${local.github_owner}@${var.github_ids.owner}/${local.github_repo}@${var.github_ids.repository}"
   oidc_provider    = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : "arn:${local.partition}:iam::${local.account_id}:oidc-provider/${local.oidc_host}"
   workload_prefix  = var.project
   region_account   = "${var.aws_region}:${local.account_id}"
@@ -39,7 +43,7 @@ data "aws_iam_policy_document" "trust_plan" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values   = ["repo:${var.github_repository}:pull_request"]
+      values   = ["${local.sub_prefix}:pull_request"]
     }
   }
 }
@@ -59,7 +63,7 @@ data "aws_iam_policy_document" "trust_apply" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values   = ["repo:${var.github_repository}:environment:${var.github_environment}"]
+      values   = ["${local.sub_prefix}:environment:${var.github_environment}"]
     }
   }
 }

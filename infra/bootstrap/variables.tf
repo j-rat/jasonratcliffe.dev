@@ -26,6 +26,15 @@ variable "github_repository" {
   }
 }
 
+variable "github_ids" {
+  description = "Numeric GitHub owner and repository IDs. Set them when the repo uses immutable OIDC subjects (gh api repos/OWNER/REPO/actions/oidc/customization/sub shows use_immutable_subject = true)."
+  type = object({
+    owner      = number
+    repository = number
+  })
+  default = null
+}
+
 variable "github_environment" {
   description = "GitHub environment whose jobs may assume the apply role."
   type        = string
