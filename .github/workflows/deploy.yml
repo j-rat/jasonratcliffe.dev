@@ -1,0 +1,151 @@
+# main branch: test + build, then ONE approval-gated job (environment: production) that
+# applies Terraform, publishes the site to S3, invalidates CloudFront and smoke-tests the live site.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: 1.16.6
+  NODE_VERSION: 24
+  AWS_REGION: us-east-1
+  SITE_DOMAIN: jasonratcliffe.dev
+
+jobs:
+  build:
+    name: Build + PII scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Lambda unit tests
+        run: python -m unittest -v
+        working-directory: infra/main/lambda/contact
+      - run: npm ci
+        working-directory: site
+      - run: npx playwright install --with-deps chromium
+        working-directory: site
+      - run: npm run build
+        working-directory: site
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site-dist
+          path: site/dist
+          retention-days: 7
+          if-no-files-found: error
+
+  deploy:
+    name: Terraform apply + publish
+    runs-on: ubuntu-latest
+    needs: [build]
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: terraform-state
+      cancel-in-progress: false
+    env:
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: 'false'
+      TF_VAR_contact_to_email: ${{ secrets.CONTACT_TO_EMAIL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          role-session-name: gha-apply-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: terraform init
+        working-directory: infra/main
+        run: >
+          terraform init
+          -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}"
+          -backend-config="region=${{ env.AWS_REGION }}"
+          -backend-config="encrypt=true"
+          -backend-config="use_lockfile=true"
+      - name: terraform plan
+        working-directory: infra/main
+        run: |
+          terraform plan -lock-timeout=5m -out=tfplan -no-color > plan.log 2>&1 || { tail -n 40 plan.log | sed -E 's/[0-9]{12}/************/g'; exit 1; }
+          {
+            echo "### Terraform changes applied"
+            echo
+            terraform show -json tfplan | jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | "- \(.change.actions | join(", ")) `\(.address)`"'
+            grep -E '^(Plan:|No changes)' plan.log || true
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: terraform apply
+        working-directory: infra/main
+        run: |
+          terraform apply -lock-timeout=5m -no-color tfplan > apply.log 2>&1 || { tail -n 40 apply.log | sed -E 's/[0-9]{12}/************/g'; exit 1; }
+          grep -E '^Apply complete' apply.log
+          rm -f apply.log plan.log tfplan
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-dist
+          path: dist
+      - name: Read deploy targets from Terraform outputs (masked)
+        working-directory: infra/main
+        run: |
+          bucket=$(terraform output -raw site_bucket)
+          dist_id=$(terraform output -raw distribution_id)
+          echo "::add-mask::$bucket"
+          echo "::add-mask::$dist_id"
+          echo "SITE_BUCKET=$bucket" >> "$GITHUB_ENV"
+          echo "DISTRIBUTION_ID=$dist_id" >> "$GITHUB_ENV"
+      - name: Upload fingerprinted assets (immutable, kept for old pages)
+        run: |
+          aws s3 sync dist/_astro "s3://$SITE_BUCKET/_astro" \
+            --cache-control "public,max-age=31536000,immutable" --only-show-errors
+      - name: Upload pages and files (revalidate)
+        run: |
+          aws s3 sync dist "s3://$SITE_BUCKET" --delete --exclude "_astro/*" \
+            --cache-control "public,max-age=300,must-revalidate" --only-show-errors
+      - name: Invalidate CloudFront
+        run: |
+          id=$(aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths '/*' --query Invalidation.Id --output text)
+          echo "::add-mask::$id"
+          aws cloudfront wait invalidation-completed --distribution-id "$DISTRIBUTION_ID" --id "$id"
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          url="https://$SITE_DOMAIN"
+          headers=$(curl -sfI "$url/")
+          for h in strict-transport-security content-security-policy x-content-type-options referrer-policy permissions-policy x-frame-options; do
+            echo "$headers" | grep -qi "^$h:" || { echo "missing header: $h"; exit 1; }
+          done
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/resume.pdf")" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/architecture/")" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/does-not-exist")" = 404
+          test "$(curl -s -o /dev/null -w '%{redirect_url}' "https://www.$SITE_DOMAIN/blog/")" = "$url/blog/"
+          test "$(curl -s -o /dev/null -w '%{http_code}' "http://$SITE_DOMAIN/")" = 301
+          # The bucket must not be reachable directly.
+          test "$(curl -s -o /dev/null -w '%{http_code}' "https://$SITE_BUCKET.s3.amazonaws.com/index.html")" = 403
+          # The API must refuse requests that bypass CloudFront: send a bad body; CloudFront path should give 400.
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "Origin: $url" -d '{}' "$url/api/contact")" = 400
+          echo "### Live checks passed for $url" >> "$GITHUB_STEP_SUMMARY"

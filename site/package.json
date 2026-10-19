@@ -1,0 +1,23 @@
+{
+  "name": "resume-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build && node scripts/build-pdf.mjs && node scripts/pii-scan.mjs",
+    "build:html": "astro build",
+    "pdf": "node scripts/build-pdf.mjs",
+    "scan": "node scripts/pii-scan.mjs",
+    "check": "astro check",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "astro": "^7.4.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "playwright": "^1.64.1",
+    "typescript": "^6.0.3",
+    "unpdf": "^1.9.0"
+  }
+}

@@ -1,0 +1,74 @@
+---
+import Base from '../layouts/Base.astro';
+import { stride } from '../data/threat-model';
+---
+<Base title="Threat model" description="A STRIDE threat model of Jason Ratcliffe's career: each threat class mapped to controls he has built." active="threat-model">
+  <div class="wrap page">
+    <p class="eyebrow">Threat model</p>
+    <h1>My career, as a STRIDE threat model</h1>
+    <p class="lead muted">
+      STRIDE is how security engineers sort what can go wrong in a system. Here the “system” is an enterprise
+      cloud estate, and each threat class is answered with controls I designed, funded or shipped. Every line is
+      backed by my resume.
+    </p>
+
+    <nav class="legend" aria-label="STRIDE categories">
+      {stride.map((t) => <a href={`#stride-${t.id}`}><b>{t.id}</b> {t.name}</a>)}
+    </nav>
+
+    <div class="grid">
+      {stride.map((t) => (
+        <article id={`stride-${t.id}`} class="card threat">
+          <header>
+            <span class="letter mono" aria-hidden="true">{t.id}</span>
+            <div>
+              <h2>{t.name}</h2>
+              <p class="prop mono">violates → {t.property}</p>
+            </div>
+          </header>
+          <p class="q">{t.question}</p>
+          <ul>
+            {t.mitigations.map((m) => (
+              <li>
+                <span class="status mono" aria-label="mitigated">MITIGATED</span>
+                <strong>{m.control}</strong>
+                <span class="muted">{m.evidence}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
+      ))}
+    </div>
+
+    <p class="muted mono note">Also in the terminal: press <kbd>`</kbd> and run <code>threat-model E</code>.</p>
+  </div>
+</Base>
+
+<style>
+  .page { padding-top: 48px; padding-bottom: 32px; }
+  .lead { max-width: 72ch; font-size: 1.08rem; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; }
+  .legend a {
+    font: 500 0.85rem var(--mono); text-decoration: none; color: var(--text-muted);
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px;
+  }
+  .legend a b { color: var(--accent); }
+  .legend a:hover { border-color: var(--accent); color: var(--text); }
+  .grid { display: grid; gap: 18px; grid-template-columns: 1fr; }
+  @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+  .threat header { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
+  .letter {
+    flex: none; width: 52px; height: 52px; display: grid; place-items: center;
+    font-size: 1.6rem; font-weight: 800; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 10px; background: var(--accent-soft);
+  }
+  .threat h2 { margin: 0; font-size: 1.25rem; }
+  .prop { margin: 2px 0 0; font-size: 0.78rem; color: var(--text-muted); }
+  .q { font-style: italic; color: var(--text); }
+  .threat ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  .threat li { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-sunken); }
+  .status { font-size: 0.65rem; letter-spacing: 0.12em; color: var(--ok); }
+  .threat li .muted { font-size: 0.9rem; }
+  .note { margin-top: 28px; font-size: 0.85rem; }
+  code { font-family: var(--mono); background: var(--bg-sunken); border: 1px solid var(--line); padding: 1px 6px; border-radius: 4px; }
+</style>

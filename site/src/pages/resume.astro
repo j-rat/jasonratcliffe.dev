@@ -1,0 +1,86 @@
+---
+// Print layout rendered to /resume.pdf by scripts/build-pdf.mjs. Same data as the site,
+// so the PDF can never show something the site does not (and never shows contact details).
+import '../styles/print-resume.css';
+import {
+  profile, summary, roles, earlierTitles, employer, leadership, cloudExpertise, awards,
+  certifications, skills, education, training, projects,
+} from '../data/resume';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>{profile.name} – Resume</title>
+  </head>
+  <body>
+    <header>
+      <h1>{profile.name}</h1>
+      <p class="role">{profile.title}</p>
+      <p class="contact">{profile.location} · linkedin.com/in/jasonratcliffe · jasonratcliffe.dev (contact form)</p>
+    </header>
+
+    <section>
+      <h2>Summary</h2>
+      <p>{summary}</p>
+    </section>
+
+    <section class="two">
+      <div>
+        <h2>Certifications</h2>
+        <ul class="tight">{certifications.map((c) => <li>{c.name}</li>)}</ul>
+      </div>
+      <div>
+        <h2>Skills</h2>
+        <ul class="tight">{skills.flatMap((g) => g.items).map((s) => <li>{s}</li>)}</ul>
+      </div>
+    </section>
+
+    <section>
+      <h2>Leadership expertise</h2>
+      <ul>
+        {awards.slice(0, 1).map((a) => <li><strong>{a.year} – {a.name}:</strong> {a.detail}</li>)}
+        {leadership.map((b) => <li>{b}</li>)}
+      </ul>
+    </section>
+
+    <section>
+      <h2>Cloud security engineering expertise</h2>
+      <ul>
+        {awards.slice(1).map((a) => <li><strong>{a.year} – {a.name}:</strong> {a.detail}</li>)}
+        {projects.map((p) => <li><strong>{p.name}:</strong> {p.blurb}</li>)}
+        {cloudExpertise.map((b) => <li>{b}</li>)}
+      </ul>
+    </section>
+
+    <section>
+      <h2>Work experience</h2>
+      <p class="employer">{employer.name} – {employer.location}</p>
+      {roles.map((r, i) => (
+        <div class="role-block">
+          {i < 2 ? (
+            <p class="r"><strong>{r.title}</strong><span>{r.start} – {r.end}</span></p>
+          ) : (
+            earlierTitles.map((t) => <p class="r"><strong>{t.title}</strong><span>{t.start} – {t.end}</span></p>)
+          )}
+          <ul>{r.bullets.map((b) => <li>{b}</li>)}</ul>
+        </div>
+      ))}
+    </section>
+
+    <section>
+      <h2>Education &amp; training</h2>
+      <p><strong>{education.school}</strong> – {education.degree}, {education.date}</p>
+      <ul class="tight">{training.map((t) => <li>{t}</li>)}</ul>
+    </section>
+
+    <section>
+      <h2>Blog posts and external collaboration</h2>
+      <ul class="tight">
+        {projects.filter((p) => p.link).map((p) => <li>{p.name} – <a href={p.link!.href}>{p.link!.href}</a></li>)}
+      </ul>
+    </section>
+  </body>
+</html>

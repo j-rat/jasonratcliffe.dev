@@ -1,0 +1,34 @@
+@page { size: Letter; margin: 0.55in 0.6in; }
+
+:root { color-scheme: light; }
+
+body {
+  margin: 0 auto;
+  max-width: 8.5in;
+  padding: 24px;
+  background: #fff;
+  color: #111;
+  font: 10pt/1.4 'Helvetica Neue', Arial, sans-serif;
+}
+@media print { body { padding: 0; } }
+
+header { border-bottom: 2px solid #0f766e; padding-bottom: 8px; margin-bottom: 10px; }
+h1 { font-size: 20pt; margin: 0; letter-spacing: 0.02em; }
+.role { margin: 2px 0; color: #0f766e; font-weight: 600; }
+.contact { margin: 0; color: #444; font-size: 9pt; }
+
+h2 {
+  font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.1em;
+  color: #0f766e; margin: 12px 0 4px; border-bottom: 1px solid #ddd; padding-bottom: 2px;
+}
+p { margin: 0 0 4px; }
+ul { margin: 2px 0 6px; padding-left: 1.1em; }
+li { margin: 1px 0; }
+section { break-inside: auto; }
+.role-block { break-inside: avoid-page; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+.tight li { margin: 0; }
+.employer { font-weight: 700; margin-top: 4px; }
+.r { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; }
+.r span { color: #444; white-space: nowrap; }
+a { color: #0f766e; text-decoration: none; word-break: break-all; }

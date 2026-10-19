@@ -1,0 +1,112 @@
+---
+import '../styles/global.css';
+import Terminal from '../components/Terminal.astro';
+import { profile } from '../data/resume';
+
+interface Props {
+  title?: string;
+  description?: string;
+  active?: 'home' | 'architecture' | 'threat-model' | 'blog';
+}
+
+const { title, description = profile.tagline, active = 'home' } = Astro.props;
+const fullTitle = title ? `${title} · ${profile.name}` : `${profile.name} · Cloud Security Engineer`;
+const canonical = new URL(Astro.url.pathname, Astro.site).toString();
+
+const nav = [
+  { href: '/#experience', label: 'Experience', key: 'home' },
+  { href: '/architecture/', label: 'Architecture', key: 'architecture' },
+  { href: '/threat-model/', label: 'Threat model', key: 'threat-model' },
+  { href: '/blog/', label: 'Blog', key: 'blog' },
+  { href: '/#contact', label: 'Contact', key: 'contact' },
+];
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#070b10" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap bar">
+        <a class="brand" href="/" aria-label={`${profile.name}, home`}>
+          <span class="prompt" aria-hidden="true">~/</span>jasonratcliffe<span class="dot">.dev</span>
+        </a>
+        <nav aria-label="Primary">
+          <ul>
+            {nav.map((n) => (
+              <li><a href={n.href} aria-current={n.key === active ? 'page' : undefined}>{n.label}</a></li>
+            ))}
+          </ul>
+        </nav>
+        <button class="btn term-btn" type="button" data-terminal-open aria-haspopup="dialog" aria-controls="terminal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 17l6-5-6-5M12 19h8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Terminal</span> <kbd aria-hidden="true">`</kbd>
+        </button>
+      </div>
+    </header>
+
+    <main id="main">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap foot">
+        <p class="muted mono">
+          © {new Date().getFullYear()} {profile.name} · Served from a private S3 origin through CloudFront ·
+          <a href="/architecture/">how this site is secured</a>
+        </p>
+        <p class="muted mono">
+          <a href={profile.linkedin} rel="noopener noreferrer">LinkedIn</a> ·
+          <a href="/.well-known/security.txt">security.txt</a> ·
+          Press <kbd>`</kbd> for a shell
+        </p>
+      </div>
+    </footer>
+
+    <Terminal />
+  </body>
+</html>
+
+<style>
+  .site-header {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(7, 11, 16, 0.82);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .bar { display: flex; align-items: center; gap: 16px; min-height: 64px; flex-wrap: wrap; }
+  .brand { font: 700 1rem var(--mono); color: var(--text); text-decoration: none; margin-right: auto; }
+  .brand .prompt, .brand .dot { color: var(--accent); }
+  nav ul { list-style: none; display: flex; gap: 4px; margin: 0; padding: 0; flex-wrap: wrap; }
+  nav a {
+    display: block; padding: 8px 10px; border-radius: 6px;
+    font: 500 0.88rem var(--mono); color: var(--text-muted); text-decoration: none;
+  }
+  nav a:hover, nav a[aria-current='page'] { color: var(--text); background: var(--accent-soft); }
+  .term-btn { padding: 8px 12px; }
+  .term-btn kbd { font-size: 0.72rem; }
+
+  @media (max-width: 760px) {
+    .bar { padding-top: 8px; padding-bottom: 8px; gap: 8px; }
+    nav { order: 3; width: 100%; overflow-x: auto; }
+    nav ul { flex-wrap: nowrap; }
+    nav a { white-space: nowrap; padding: 6px 8px; font-size: 0.82rem; }
+    .term-btn kbd { display: none; }
+  }
+
+  .site-footer { border-top: 1px solid var(--line); padding: 28px 0 40px; margin-top: 40px; }
+  .foot p { font-size: 0.82rem; margin: 0.3em 0; }
+</style>

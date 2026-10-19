@@ -1,0 +1,29 @@
+# Source resume contains phone, address and personal email – never commit it.
+*.docx
+*.doc
+~$*
+
+# Site build
+node_modules/
+site/dist/
+site/.astro/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+# Account-specific values (account ID, recipient email, state bucket) stay local / in GitHub secrets.
+*.tfvars
+!*.tfvars.example
+backend.hcl
+!backend.hcl.example
+
+# Lambda build artifacts
+infra/**/build/
+
+.DS_Store
+.env
+.env.*

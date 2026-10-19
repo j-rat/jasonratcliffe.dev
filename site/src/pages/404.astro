@@ -1,0 +1,15 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="404" description="Page not found.">
+  <div class="wrap nf">
+    <p class="eyebrow">HTTP 404</p>
+    <h1>Access denied – by not existing.</h1>
+    <p class="muted mono">$ curl -I {Astro.url.pathname}<br />HTTP/2 404 · x-cache: Error from cloudfront</p>
+    <p><a class="btn btn-primary" href="/">cd ~</a></p>
+  </div>
+</Base>
+
+<style>
+  .nf { padding-top: 80px; padding-bottom: 80px; }
+</style>

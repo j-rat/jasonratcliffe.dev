@@ -1,0 +1,179 @@
+---
+import Base from '../layouts/Base.astro';
+import Hero from '../components/Hero.astro';
+import ContactForm from '../components/ContactForm.astro';
+import {
+  summary, roles, earlierTitles, employer, leadership, cloudExpertise, awards,
+  certifications, projects, skills, education, training,
+} from '../data/resume';
+
+const sections = [
+  ['summary', 'Summary'], ['experience', 'Experience'], ['certifications', 'Certifications'],
+  ['projects', 'Projects'], ['skills', 'Skills'], ['contact', 'Contact'],
+];
+---
+<Base active="home">
+  <Hero />
+
+  <nav class="wrap toc" aria-label="Resume sections">
+    {sections.map(([id, label]) => <a href={`#${id}`}>{label}</a>)}
+  </nav>
+
+  <div class="wrap">
+    <section id="summary" class="block">
+      <p class="eyebrow">Summary</p>
+      <h2>Platform security, from the kernel to the cloud control plane</h2>
+      <p class="lead">{summary}</p>
+    </section>
+
+    <section id="experience" class="block">
+      <p class="eyebrow">Experience</p>
+      <h2>{employer.name}</h2>
+      <p class="muted mono">{employer.location} · 06.2007 – Present</p>
+
+      <ol class="timeline">
+        {roles.map((r, i) => (
+          <li>
+            <details open={i < 2}>
+              <summary>
+                <span class="t">{r.title}</span>
+                <span class="d mono">{r.start} – {r.end}</span>
+              </summary>
+              {i === 2 && (
+                <ul class="titles mono">
+                  {earlierTitles.map((t) => <li>{t.title} <span class="muted">{t.start} – {t.end}</span></li>)}
+                </ul>
+              )}
+              <ul class="bullets">{r.bullets.map((b) => <li>{b}</li>)}</ul>
+            </details>
+          </li>
+        ))}
+      </ol>
+
+      <div class="cols">
+        <div class="card">
+          <h3>Leadership</h3>
+          <ul class="bullets">{leadership.map((b) => <li>{b}</li>)}</ul>
+        </div>
+        <div class="card">
+          <h3>Cloud security engineering</h3>
+          <ul class="bullets">{cloudExpertise.map((b) => <li>{b}</li>)}</ul>
+        </div>
+      </div>
+
+      <h3 class="sub">Recognition</h3>
+      <div class="awards">
+        {awards.map((a) => (
+          <div class="card award">
+            <p class="mono acc">{a.year} · {a.name}</p>
+            <p class="muted">{a.detail}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section id="certifications" class="block">
+      <p class="eyebrow">Certifications</p>
+      <h2>Credentials</h2>
+      <ul class="certs">
+        {certifications.map((c) => (
+          <li class="card"><span class="check" aria-hidden="true">✓</span><span><strong>{c.name}</strong><br /><span class="muted small">{c.issuer}</span></span></li>
+        ))}
+      </ul>
+      <div class="cols edu">
+        <div>
+          <h3>Education</h3>
+          <p><strong>{education.school}</strong><br /><span class="muted">{education.degree} · {education.date}</span></p>
+        </div>
+        <div>
+          <h3>Training</h3>
+          <ul class="plain">{training.map((t) => <li>{t}</li>)}</ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="projects" class="block">
+      <p class="eyebrow">Projects &amp; writing</p>
+      <h2>Built, shipped and written about</h2>
+      <div class="projects">
+        {projects.map((p) => (
+          <article class="card project">
+            <h3>{p.name}</h3>
+            <p class="muted">{p.blurb}</p>
+            <p class="tags">{p.tags.map((t) => <span class="tag">{t}</span>)}</p>
+            {p.link && <a href={p.link.href} rel="noopener noreferrer">{p.link.label} →</a>}
+          </article>
+        ))}
+      </div>
+      <p class="more"><a href="/blog/">Read the blog on this site →</a></p>
+    </section>
+
+    <section id="skills" class="block">
+      <p class="eyebrow">Skills</p>
+      <h2>Toolbox</h2>
+      <div class="skills">
+        {skills.map((g) => (
+          <div>
+            <h3>{g.group}</h3>
+            <p class="tags">{g.items.map((s) => <span class="tag">{s}</span>)}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section id="contact" class="block">
+      <p class="eyebrow">Contact</p>
+      <h2>Let’s talk</h2>
+      <p class="muted">Hiring, collaborating, or comparing notes on cloud security? Send a note.</p>
+      <ContactForm />
+    </section>
+  </div>
+</Base>
+
+<style>
+  .toc {
+    display: flex; gap: 6px; flex-wrap: wrap; padding-bottom: 8px;
+  }
+  .toc a {
+    font: 500 0.82rem var(--mono); color: var(--text-muted); text-decoration: none;
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px;
+  }
+  .toc a:hover { color: var(--text); border-color: var(--accent); }
+  .lead { font-size: 1.08rem; max-width: 75ch; }
+  .timeline { list-style: none; padding: 0; margin: 28px 0; border-left: 2px solid var(--line-strong); }
+  .timeline > li { position: relative; padding: 0 0 22px 22px; }
+  .timeline > li::before {
+    content: ''; position: absolute; left: -7px; top: 8px; width: 12px; height: 12px;
+    border-radius: 50%; background: var(--bg); border: 2px solid var(--accent);
+  }
+  summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary .t { font: 700 1.02rem var(--mono); }
+  summary .t::after { content: ' +'; color: var(--accent); }
+  details[open] summary .t::after { content: ' −'; }
+  summary .d { color: var(--accent); font-size: 0.85rem; }
+  .titles { list-style: none; padding: 0; margin: 10px 0 0; font-size: 0.85rem; }
+  .bullets { margin: 10px 0 0; padding-left: 1.1em; }
+  .bullets li { margin: 0.35em 0; }
+  .bullets li::marker { color: var(--accent); }
+  .cols { display: grid; gap: 20px; grid-template-columns: 1fr; }
+  @media (min-width: 900px) { .cols { grid-template-columns: 1fr 1fr; } }
+  .sub { margin-top: 32px; }
+  .awards { display: grid; gap: 16px; grid-template-columns: 1fr; }
+  @media (min-width: 760px) { .awards { grid-template-columns: 1fr 1fr; } }
+  .acc { color: var(--accent); font-weight: 600; }
+  .award p:last-child { margin: 0; }
+  .certs { list-style: none; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .certs li { display: flex; gap: 12px; padding: 14px 16px; }
+  .check { color: var(--accent); font-weight: 700; }
+  .small { font-size: 0.82rem; }
+  .edu { margin-top: 28px; }
+  .plain { padding-left: 1.1em; margin: 0; }
+  .projects { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .project { display: flex; flex-direction: column; }
+  .project a { margin-top: auto; font: 600 0.88rem var(--mono); }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .more { margin-top: 20px; font-family: var(--mono); }
+  .skills { display: grid; gap: 24px; grid-template-columns: 1fr; }
+  @media (min-width: 900px) { .skills { grid-template-columns: repeat(3, 1fr); } }
+</style>

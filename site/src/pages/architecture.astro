@@ -1,0 +1,163 @@
+---
+import Base from '../layouts/Base.astro';
+
+// Generic labels only: no account IDs, ARNs or real resource names on this page.
+const controls = [
+  { layer: 'DNS', what: 'Route 53 hosted zone', controls: ['Alias records to the CDN (no IPs to drift)', 'CAA records allow only Amazon to issue certificates', 'SPF, DKIM and DMARC for the mail domain'] },
+  { layer: 'Edge / TLS', what: 'CloudFront + ACM certificate', controls: ['TLS 1.2+ (TLSv1.2_2021 policy), HTTP → HTTPS redirect', 'HTTP/2 and HTTP/3', 'Edge function: www → apex redirect, clean URLs'] },
+  { layer: 'Headers', what: 'Response headers policy', controls: ['HSTS (2 years, includeSubDomains, preload)', 'Strict CSP: self-only scripts, no inline script, frame-ancestors none', 'nosniff, Referrer-Policy, Permissions-Policy, COOP/CORP'] },
+  { layer: 'Origin', what: 'Private S3 bucket', controls: ['Block Public Access on, ACLs disabled (bucket owner enforced)', 'Origin Access Control: bucket policy allows only this distribution', 'SSE encryption, versioning for instant rollback, TLS-only bucket policy'] },
+  { layer: 'Contact API', what: 'HTTP API → Lambda → SES', controls: ['Same-origin route through the CDN (no CORS, no extra CSP origin)', 'Stage throttling returns 429 on bursts; honeypot drops bots', 'Secret origin header so the API only answers the CDN', 'Lambda role can send only from the site domain identity; recipient never leaves the backend'] },
+  { layer: 'IaC', what: 'Terraform', controls: ['Remote state in a dedicated S3 bucket: versioned, encrypted, public access blocked, TLS-only', 'Native S3 state locking', 'Account-specific values kept out of git'] },
+  { layer: 'CI/CD', what: 'GitHub Actions', controls: ['OIDC federation – no long-lived AWS keys anywhere', 'PRs assume a read-only plan role; main uses an apply role behind a protected environment', 'Build fails if the PII scanner finds an email, phone or address'] },
+];
+---
+<Base title="Architecture" description="How jasonratcliffe.dev is hosted and secured on AWS." active="architecture">
+  <div class="wrap page">
+    <p class="eyebrow">Architecture</p>
+    <h1>How this site is hosted and secured</h1>
+    <p class="lead muted">A static site with one small serverless function, deployed by Terraform from GitHub Actions. Everything a visitor touches goes through the CDN; nothing else is reachable from the internet.</p>
+
+    <figure class="card diagram">
+      <svg viewBox="0 0 1000 560" role="img" aria-labelledby="arch-title arch-desc">
+        <title id="arch-title">Architecture diagram</title>
+        <desc id="arch-desc">Visitors resolve the domain in Route 53 and connect over TLS to CloudFront. CloudFront adds security headers and serves static files from a private S3 bucket through Origin Access Control. Requests to /api/contact go to a throttled HTTP API, which invokes a Lambda function that sends mail through Amazon SES. GitHub Actions authenticates to AWS with OIDC to run Terraform, whose state is stored in a separate S3 bucket, and to publish the site files.</desc>
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" class="arrowhead" />
+          </marker>
+        </defs>
+
+        <rect x="200" y="20" width="780" height="350" rx="14" class="boundary" />
+        <text x="216" y="44" class="boundary-label">AWS · us-east-1 · single account</text>
+
+        <g class="node">
+          <rect x="20" y="150" width="140" height="70" rx="10" />
+          <text x="90" y="182" class="title">Visitor</text>
+          <text x="90" y="202" class="sub">browser</text>
+        </g>
+        <g class="node">
+          <rect x="230" y="64" width="210" height="64" rx="10" />
+          <text x="335" y="92" class="title">Route 53</text>
+          <text x="335" y="112" class="sub">alias · CAA · DKIM · SPF</text>
+        </g>
+        <g class="node accent">
+          <rect x="230" y="160" width="250" height="110" rx="10" />
+          <text x="355" y="190" class="title">CloudFront</text>
+          <text x="355" y="212" class="sub">ACM cert · TLS 1.2+ · HTTP/3</text>
+          <text x="355" y="232" class="sub">security headers policy</text>
+          <text x="355" y="252" class="sub">edge function: redirects</text>
+        </g>
+        <g class="node">
+          <rect x="600" y="60" width="220" height="86" rx="10" />
+          <text x="710" y="90" class="title">S3 site bucket</text>
+          <text x="710" y="110" class="sub">private · OAC only</text>
+          <text x="710" y="128" class="sub">encrypted · versioned</text>
+        </g>
+        <g class="node">
+          <rect x="600" y="180" width="220" height="76" rx="10" />
+          <text x="710" y="208" class="title">HTTP API</text>
+          <text x="710" y="228" class="sub">POST /api/contact</text>
+          <text x="710" y="245" class="sub">stage throttling</text>
+        </g>
+        <g class="node">
+          <rect x="600" y="290" width="220" height="64" rx="10" />
+          <text x="710" y="318" class="title">Lambda</text>
+          <text x="710" y="338" class="sub">validate · honeypot</text>
+        </g>
+        <g class="node">
+          <rect x="850" y="290" width="120" height="64" rx="10" />
+          <text x="910" y="318" class="title">SES</text>
+          <text x="910" y="338" class="sub">DKIM-signed</text>
+        </g>
+        <g class="node ghost">
+          <rect x="850" y="180" width="120" height="76" rx="10" />
+          <text x="910" y="212" class="title">Inbox</text>
+          <text x="910" y="232" class="sub">never public</text>
+        </g>
+
+        <path d="M160 170 C 190 150, 200 104, 230 98" class="edge" marker-end="url(#arrow)" />
+        <text x="166" y="126" class="edge-label">1 DNS</text>
+        <path d="M160 200 L 230 210" class="edge strong" marker-end="url(#arrow)" />
+        <text x="170" y="232" class="edge-label">2 HTTPS</text>
+        <path d="M480 185 C 530 170, 550 108, 600 103" class="edge strong" marker-end="url(#arrow)" />
+        <text x="490" y="150" class="edge-label">/* OAC</text>
+        <path d="M480 225 L 600 220" class="edge strong" marker-end="url(#arrow)" />
+        <text x="496" y="214" class="edge-label">/api/*</text>
+        <path d="M710 256 L 710 290" class="edge" marker-end="url(#arrow)" />
+        <path d="M820 322 L 850 322" class="edge" marker-end="url(#arrow)" />
+        <path d="M910 290 L 910 256" class="edge" marker-end="url(#arrow)" />
+
+        <rect x="20" y="400" width="960" height="140" rx="14" class="boundary dashed" />
+        <text x="36" y="424" class="boundary-label">Delivery</text>
+
+        <g class="node">
+          <rect x="40" y="440" width="200" height="80" rx="10" />
+          <text x="140" y="470" class="title">GitHub Actions</text>
+          <text x="140" y="490" class="sub">PR: plan · main: apply</text>
+          <text x="140" y="508" class="sub">PII scan gate</text>
+        </g>
+        <g class="node">
+          <rect x="310" y="440" width="200" height="80" rx="10" />
+          <text x="410" y="470" class="title">IAM OIDC roles</text>
+          <text x="410" y="490" class="sub">short-lived creds</text>
+          <text x="410" y="508" class="sub">repo + branch scoped</text>
+        </g>
+        <g class="node">
+          <rect x="600" y="440" width="220" height="80" rx="10" />
+          <text x="710" y="470" class="title">Terraform state</text>
+          <text x="710" y="490" class="sub">own S3 bucket</text>
+          <text x="710" y="508" class="sub">versioned · locked</text>
+        </g>
+        <path d="M240 480 L 310 480" class="edge" marker-end="url(#arrow)" />
+        <text x="252" y="470" class="edge-label">OIDC</text>
+        <path d="M510 480 L 600 480" class="edge" marker-end="url(#arrow)" />
+        <text x="522" y="470" class="edge-label">plan/apply</text>
+        <path d="M410 440 L 410 388 L 548 388 L 548 140 L 600 132" class="edge dashed-edge" marker-end="url(#arrow)" />
+        <text x="420" y="382" class="edge-label">sync files · invalidate cache</text>
+      </svg>
+      <figcaption class="muted mono">Solid arrows: request path. Dashed: deployment. Nothing outside the CDN is publicly reachable; the S3 website endpoint is not used.</figcaption>
+    </figure>
+
+    <h2 class="sec">Controls by layer</h2>
+    <div class="layers">
+      {controls.map((c) => (
+        <article class="card">
+          <p class="mono layer">{c.layer}</p>
+          <h3>{c.what}</h3>
+          <ul>{c.controls.map((x) => <li>{x}</li>)}</ul>
+        </article>
+      ))}
+    </div>
+
+    <p class="muted mono note">Want to verify? <code>curl -sI https://jasonratcliffe.dev</code> shows every header above. The infrastructure is written in Terraform – read about it on the <a href="/blog/">blog</a>.</p>
+  </div>
+</Base>
+
+<style>
+  .page { padding-top: 48px; padding-bottom: 32px; }
+  .lead { max-width: 70ch; font-size: 1.08rem; }
+  .diagram { margin: 28px 0 0; padding: 12px; overflow-x: auto; }
+  .diagram svg { width: 100%; min-width: 640px; height: auto; display: block; }
+  .diagram figcaption { font-size: 0.78rem; padding: 8px 6px 2px; }
+  .boundary { fill: rgba(45, 212, 191, 0.03); stroke: var(--line-strong); stroke-width: 1.5; }
+  .boundary.dashed { stroke-dasharray: 6 6; fill: transparent; }
+  .boundary-label { fill: var(--text-muted); font: 600 12px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+  .node rect { fill: var(--bg-raised); stroke: var(--line-strong); stroke-width: 1.5; }
+  .node.accent rect { stroke: var(--accent); fill: rgba(45, 212, 191, 0.07); }
+  .node.ghost rect { stroke-dasharray: 4 4; fill: transparent; }
+  .node .title { fill: var(--text); font: 700 14px var(--mono); text-anchor: middle; }
+  .node .sub { fill: var(--text-muted); font: 11.5px var(--mono); text-anchor: middle; }
+  .edge { fill: none; stroke: #5b6b7c; stroke-width: 1.6; }
+  .edge.strong { stroke: var(--accent); stroke-width: 2; }
+  .dashed-edge { stroke-dasharray: 5 5; }
+  .arrowhead { fill: #8a9aab; }
+  .edge-label { fill: var(--text-muted); font: 11px var(--mono); }
+  .sec { margin-top: 48px; }
+  .layers { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
+  .layer { color: var(--accent); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; margin: 0 0 4px; }
+  .layers ul { margin: 0; padding-left: 1.1em; color: var(--text-muted); font-size: 0.93rem; }
+  .layers li { margin: 0.3em 0; }
+  .note { margin-top: 28px; font-size: 0.85rem; }
+  code { font-family: var(--mono); background: var(--bg-sunken); border: 1px solid var(--line); padding: 1px 6px; border-radius: 4px; }
+</style>

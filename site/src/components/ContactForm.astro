@@ -1,0 +1,64 @@
+---
+import { profile } from '../data/resume';
+---
+<div class="contact-grid">
+  <form class="card form" data-contact-form action="/api/contact" method="post" novalidate>
+    <div class="field">
+      <label for="c-name">Name</label>
+      <input id="c-name" name="name" type="text" required maxlength="100" autocomplete="name" />
+    </div>
+    <div class="field">
+      <label for="c-reply">Your email <span class="muted">(so I can reply)</span></label>
+      <input id="c-reply" name="reply_to" type="email" required maxlength="254" autocomplete="email" />
+    </div>
+    <div class="field">
+      <label for="c-msg">Message</label>
+      <textarea id="c-msg" name="message" required minlength="10" maxlength="4000" rows="5"></textarea>
+    </div>
+    <!-- Honeypot: humans never see or fill this. -->
+    <div class="hp" aria-hidden="true">
+      <label for="c-website">Website</label>
+      <input id="c-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Send message</button>
+      <p class="status mono" data-contact-status role="status" aria-live="polite"></p>
+    </div>
+  </form>
+  <aside class="card side">
+    <h3>Prefer LinkedIn?</h3>
+    <p class="muted">Messages and connection requests are welcome there too.</p>
+    <a class="btn" href={profile.linkedin} rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4.98 3.5a2.5 2.5 0 11-.02 5 2.5 2.5 0 01.02-5zM3 9h4v12H3zM9 9h3.8v1.7h.06c.53-1 1.83-2.05 3.77-2.05C20.6 8.65 21 11.2 21 14.4V21h-4v-5.8c0-1.4-.03-3.2-1.95-3.2-1.96 0-2.26 1.53-2.26 3.1V21H9z"/></svg>
+      Message on LinkedIn
+    </a>
+    <p class="muted small">Your message goes from this form through a throttled API to a Lambda function and Amazon SES. No address is published, there’s no tracking, and messages are never stored on the site.</p>
+  </aside>
+</div>
+
+<script>
+  import { initContactForm } from '../scripts/contact';
+  initContactForm();
+</script>
+
+<style>
+  .contact-grid { display: grid; gap: 20px; grid-template-columns: 1fr; }
+  @media (min-width: 860px) { .contact-grid { grid-template-columns: 1.6fr 1fr; } }
+  .form { display: grid; gap: 16px; }
+  .field { display: grid; gap: 6px; }
+  label { font: 600 0.85rem var(--mono); }
+  input, textarea {
+    width: 100%; font: inherit; color: var(--text);
+    background: var(--bg-sunken); border: 1px solid var(--line-strong); border-radius: 8px; padding: 10px 12px;
+  }
+  input:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+  textarea { resize: vertical; }
+  .hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .status { margin: 0; font-size: 0.88rem; }
+  .status[data-state='ok'] { color: var(--ok); }
+  .status[data-state='err'] { color: var(--danger); }
+  .side { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+  .side .btn { margin: 6px 0 14px; }
+  .small { font-size: 0.85rem; }
+</style>

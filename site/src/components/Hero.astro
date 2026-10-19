@@ -1,0 +1,67 @@
+---
+import { profile, highlights } from '../data/resume';
+---
+<section class="hero wrap">
+  <div class="copy">
+    <p class="eyebrow">Cloud &amp; information security</p>
+    <h1>{profile.name}</h1>
+    <p class="role mono">{profile.title}</p>
+    <p class="lede">{profile.tagline} 18+ years turning risk into guardrails, from SSH keys and SELinux to multi-cloud data perimeters.</p>
+    <div class="ctas">
+      <a class="btn btn-primary" href="/resume.pdf" download="Jason-Ratcliffe-Resume.pdf">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Download resume
+      </a>
+      <a class="btn" href="/resume.pdf">View PDF</a>
+      <a class="btn" href={profile.linkedin} rel="noopener noreferrer">LinkedIn</a>
+    </div>
+  </div>
+  <figure class="viz">
+    <pre class="ascii" data-ascii-cloud role="img" aria-label="Animation: requests flow toward a cloud; an edge shield lets legitimate requests through and blocks malicious ones."></pre>
+    <figcaption class="mono muted">live edge filter · simulated</figcaption>
+  </figure>
+  <dl class="stats">
+    {highlights.map((h) => (<div><dt class="mono">{h.value}</dt><dd>{h.label}</dd></div>))}
+  </dl>
+</section>
+
+<script>
+  import { initAsciiCloud } from '../scripts/ascii-cloud';
+  const el = document.querySelector<HTMLElement>('[data-ascii-cloud]');
+  if (el) initAsciiCloud(el);
+</script>
+
+<style>
+  .hero {
+    display: grid; gap: 32px; padding-top: 56px; padding-bottom: 48px;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 980px) { .hero { grid-template-columns: 1fr 1fr; align-items: center; } }
+  .role { color: var(--accent); margin-top: -0.4em; }
+  .lede { font-size: 1.1rem; color: var(--text-muted); max-width: 52ch; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+  .viz { margin: 0; min-width: 0; }
+  .ascii {
+    margin: 0; padding: 16px; overflow: hidden;
+    font: clamp(7px, 1.45vw, 12.5px)/1.25 var(--mono);
+    background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius);
+    color: var(--text-muted); min-height: 16em;
+  }
+  @media (min-width: 980px) { .ascii { font-size: clamp(7px, 0.78vw, 12px); } }
+  .ascii :global(.c) { color: #7dd3fc; }
+  .ascii :global(.s) { color: var(--accent); font-weight: 700; }
+  .ascii :global(.g) { color: var(--ok); }
+  .ascii :global(.gl) { color: rgba(74, 222, 128, 0.6); }
+  .ascii :global(.r) { color: var(--danger); font-weight: 700; }
+  .ascii :global(.rl) { color: rgba(248, 113, 113, 0.65); }
+  .ascii :global(.m) { color: var(--text-muted); }
+  figcaption { font-size: 0.75rem; margin-top: 6px; text-align: right; }
+  .stats {
+    grid-column: 1 / -1; display: grid; gap: 12px; margin: 8px 0 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  @media (min-width: 760px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .stats div { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; background: rgba(13, 20, 28, 0.6); }
+  .stats dt { font-size: 1.6rem; font-weight: 700; color: var(--text); }
+  .stats dd { margin: 0; color: var(--text-muted); font-size: 0.85rem; }
+</style>

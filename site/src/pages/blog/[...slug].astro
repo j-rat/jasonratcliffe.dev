@@ -1,0 +1,40 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog', ({ data }) => !data.draft);
+  return posts.map((post) => ({ params: { slug: post.id }, props: { post } }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+const date = post.data.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+---
+<Base title={post.data.title} description={post.data.description} active="blog">
+  <article class="wrap post">
+    <p class="mono muted"><a href="/blog/">← blog</a> · <time datetime={post.data.date.toISOString()}>{date}</time></p>
+    <h1>{post.data.title}</h1>
+    <p class="tags">{post.data.tags.map((t) => <span class="tag">{t}</span>)}</p>
+    <div class="prose"><Content /></div>
+  </article>
+</Base>
+
+<style>
+  .post { padding-top: 48px; padding-bottom: 32px; max-width: 780px; }
+  .post h1 { font-size: clamp(1.7rem, 4vw, 2.4rem); margin-top: 0.4em; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 28px; }
+  .prose { font-size: 1.04rem; }
+  .prose :global(h2) { margin-top: 2em; font-size: 1.35rem; }
+  .prose :global(h3) { margin-top: 1.6em; }
+  .prose :global(pre) {
+    background: var(--bg-sunken) !important; border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; overflow-x: auto; font: 0.86rem/1.55 var(--mono);
+  }
+  .prose :global(code) { font-family: var(--mono); font-size: 0.9em; }
+  .prose :global(:not(pre) > code) { background: var(--bg-sunken); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
+  .prose :global(blockquote) { margin: 1.4em 0; padding: 4px 18px; border-left: 3px solid var(--accent); color: var(--text-muted); }
+  .prose :global(table) { border-collapse: collapse; width: 100%; font-size: 0.92rem; display: block; overflow-x: auto; }
+  .prose :global(th), .prose :global(td) { border: 1px solid var(--line); padding: 8px 10px; text-align: left; }
+  .prose :global(li) { margin: 0.3em 0; }
+</style>

@@ -1,0 +1,46 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import { writing } from '../../data/resume';
+
+const posts = (await getCollection('blog', ({ data }) => !data.draft))
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+const fmt = (d: Date) => d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+---
+<Base title="Blog" description="Notes on cloud security engineering by Jason Ratcliffe." active="blog">
+  <div class="wrap page">
+    <p class="eyebrow">Blog</p>
+    <h1>Notes from the control plane</h1>
+
+    <ul class="posts">
+      {posts.map((p) => (
+        <li class="card">
+          <p class="mono muted date"><time datetime={p.data.date.toISOString()}>{fmt(p.data.date)}</time></p>
+          <h2><a href={`/blog/${p.id}/`}>{p.data.title}</a></h2>
+          <p class="muted">{p.data.description}</p>
+          <p class="tags">{p.data.tags.map((t) => <span class="tag">{t}</span>)}</p>
+        </li>
+      ))}
+    </ul>
+
+    <h2 class="sec">Published elsewhere</h2>
+    <ul class="external">
+      {writing.map((w) => (
+        <li><a href={w.href} rel="noopener noreferrer">{w.title}</a> <span class="muted mono">· {w.label}</span></li>
+      ))}
+    </ul>
+  </div>
+</Base>
+
+<style>
+  .page { padding-top: 48px; padding-bottom: 32px; }
+  .posts { list-style: none; padding: 0; display: grid; gap: 16px; margin-top: 24px; }
+  .posts h2 { font-size: 1.25rem; margin: 0 0 0.4em; }
+  .posts h2 a { color: var(--text); text-decoration: none; }
+  .posts h2 a:hover { color: var(--accent); }
+  .date { font-size: 0.8rem; margin: 0 0 6px; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 0; }
+  .sec { margin-top: 44px; font-size: 1.2rem; }
+  .external { padding-left: 1.1em; }
+  .external li { margin: 0.5em 0; }
+</style>
