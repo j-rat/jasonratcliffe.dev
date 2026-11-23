@@ -51,6 +51,7 @@ jobs:
           path: site/dist
           retention-days: 7
           if-no-files-found: error
+          include-hidden-files: true # .well-known/security.txt
 
   deploy:
     name: Terraform apply + publish
@@ -141,6 +142,7 @@ jobs:
           done
           test "$(curl -s -o /dev/null -w '%{http_code}' "$url/resume.pdf")" = 200
           test "$(curl -s -o /dev/null -w '%{http_code}' "$url/architecture/")" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/.well-known/security.txt")" = 200
           test "$(curl -s -o /dev/null -w '%{http_code}' "$url/does-not-exist")" = 404
           test "$(curl -s -o /dev/null -w '%{redirect_url}' "https://www.$SITE_DOMAIN/blog/")" = "$url/blog/"
           test "$(curl -s -o /dev/null -w '%{http_code}' "http://$SITE_DOMAIN/")" = 301
