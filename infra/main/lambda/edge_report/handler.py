@@ -194,7 +194,14 @@ def build_report(logs, group, now, previous_daily, time_left_ms=lambda: 10**9):
         if time_left_ms() < MIN_TIME_LEFT_MS:
             break
         ds = dt.datetime.combine(day, dt.time.min, tzinfo=dt.timezone.utc)
-        drows, dtrunc = run_query(logs, group, ds, ds + dt.timedelta(days=1))
+        try:
+            drows, dtrunc = run_query(logs, group, ds, ds + dt.timedelta(days=1))
+        except Exception as e:
+            # Logs Insights rejects windows that end before the log group existed. Days are
+            # newest first, so every older day would fail too: logging hadn't started yet.
+            if getattr(e, "response", {}).get("Error", {}).get("Code") == "MalformedQueryException":
+                break
+            raise
         daily[day.isoformat()] = day_entry(day, summarize(drows), dtrunc)
 
     categories = []

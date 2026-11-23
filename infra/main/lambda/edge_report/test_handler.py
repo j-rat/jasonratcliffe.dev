@@ -184,6 +184,32 @@ class TrendTests(unittest.TestCase):
         self.assertEqual(len(rep["daily"]), handler.TREND_DAYS)
         self.assertEqual(rep["daily"][0]["date"], "2026-10-24")
 
+    def test_stops_backfilling_before_log_group_existed(self):
+        class Malformed(Exception):
+            response = {"Error": {"Code": "MalformedQueryException"}}
+
+        class NewLogGroup(FakeLogs):
+            def start_query(self, **kw):
+                if kw["endTime"] - kw["startTime"] == 86400 and kw["startTime"] % 86400 == 0 and kw["endTime"] <= 1795305600:  # 2026-11-22T00:00Z
+                    raise Malformed("Query's end date and time is either before the log groups creation time")
+                return super().start_query(**kw)
+
+        # Log group "created" at 2026-11-22 00:00 UTC: only 2026-11-22 can be backfilled.
+        logs = NewLogGroup([row("/.env")], day_rows=[row("/.env", n=2)])
+        rep = handler.build_report(logs, "g", NOW, [])
+        self.assertEqual(rep["totals"]["probes"], 1)
+        self.assertEqual([d["date"] for d in rep["daily"]], ["2026-11-22"])
+
+    def test_other_query_errors_still_fail(self):
+        class Boom(FakeLogs):
+            def start_query(self, **kw):
+                if kw["startTime"] % 86400 == 0:
+                    raise RuntimeError("throttled")
+                return super().start_query(**kw)
+
+        with self.assertRaises(RuntimeError):
+            handler.build_report(Boom([]), "g", NOW, [])
+
     def test_stops_backfilling_when_time_is_short(self):
         logs = FakeLogs([])
         handler.build_report(logs, "g", NOW, [], time_left_ms=lambda: 1000)

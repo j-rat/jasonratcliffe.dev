@@ -5,7 +5,7 @@ serverless contact form. Terraform builds the infrastructure, and GitHub Actions
 with no AWS keys stored anywhere.
 
 **Features:** a classic resume page, a redacted PDF built from the same data, a terminal overlay (press
-<kbd>`</kbd>), an architecture page, a STRIDE threat model of the career, a Markdown blog, an ASCII
+<kbd>&#96;</kbd>), an architecture page, a STRIDE threat model of the career, a Markdown blog, an ASCII
 edge-filter animation, and a daily edge-telemetry dashboard (`/edge/`) that maps probes against the site to
 MITRE ATT&CK.
 
