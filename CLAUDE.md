@@ -21,7 +21,7 @@ make install            # npm ci in site/ + Playwright Chromium (needed for the 
 make dev                # astro dev on :4321
 make build              # astro build → scripts/build-pdf.mjs → scripts/pii-scan.mjs (fails on findings)
 make scan               # PII scan only (cd site && node scripts/pii-scan.mjs [--dist-only|--repo-only])
-make test               # Lambda unit tests (stdlib unittest, no boto3 needed)
+make test               # Lambda unit tests: contact + edge_report (stdlib unittest, no boto3 needed)
 make lint               # terraform fmt -check + validate for both stacks (no AWS creds needed)
 make check              # build + test + lint (what CI runs before planning)
 cd site && npx astro check                                   # TypeScript/Astro type check
@@ -45,6 +45,10 @@ Terraform isn't installed system-wide on this machine. CI pins 1.16.6 (`TF_VERSI
   (inline styles). After site changes, check with `grep -o '<script[^>]*>' site/dist/index.html` (every
   tag needs `src=`) and `grep -rl 'style="' site/dist`.
 - Terminal and animation output is built with DOM text nodes. Don't introduce `innerHTML`.
+- **The edge report (`data/edge-threats.json`) never contains viewer IPs, query strings or paths that didn't
+  match a probe pattern** (spec `reject_if`). IPs aren't even logged: keep `c-ip`, `x-forwarded-for` and
+  `cs(Cookie)` out of `record_fields` in `infra/main/edge.tf`. `/edge/` renders that data with text nodes only,
+  because paths and user agents are attacker-controlled.
 
 ## Architecture (the parts that span files)
 
@@ -63,6 +67,11 @@ resume facts, and every entry must trace to a line in `resume.ts`. Blog posts ar
   checks, so the API is effectively same-origin only. The site posts to `/api/contact` relatively.
 - **`*.pdf`:** a separate headers policy without CSP, so browser PDF viewers work.
 - S3 403s and 404s map to `/404.html`, because the bucket deliberately has no ListBucket grant.
+- **Edge telemetry (`/edge/`):** CloudFront access logs go to CloudWatch Logs (`infra/main/edge.tf`). A daily
+  EventBridge rule runs `infra/main/lambda/edge_report/handler.py`, which classifies probes with
+  `patterns.json` (MITRE ATT&CK-mapped, first match wins) and writes `data/edge-threats.json` to the site
+  bucket. `site/src/scripts/edge.ts` renders it, and the terminal's `edge` command reuses it. Deploys sync with
+  `--exclude "data/*"` so they never delete it, then run the Lambda once before invalidating.
 
 **Two stacks and the permission model.**
 - `infra/bootstrap` is applied once, locally, with admin credentials. It owns:
@@ -77,7 +86,10 @@ resume facts, and every entry must trace to a line in `resume.ts`. Blog posts ar
 Consequences of this model:
 - Every IAM role in `infra/main` must set `permissions_boundary` and be named `resume-site-*`, or the
   apply role's `iam:CreateRole` is denied.
-- Buckets must be named `resume-site-origin-*`, and Lambda functions and log groups `resume-site-*`.
+- Buckets must be named `resume-site-origin-*`, and Lambda functions and log groups `resume-site-*`
+  (vended-log groups `/aws/vendedlogs/resume-site-*`). The boundary lets workload roles do only: Lambda logs,
+  SES send, `logs:StartQuery` on `/aws/vendedlogs/resume-site-*`, and `s3:PutObject` on `resume-site-origin-*/data/*`.
+- Changing the boundary's `description` forces a replace, which fails while roles use it. Edit statements only.
 - A new AWS service or action used by `infra/main` usually needs adding to
   `data.aws_iam_policy_document.deploy` in `infra/bootstrap/github-oidc.tf`, applied locally, before CI can use it.
 - The `project` variable must match between the two stacks.

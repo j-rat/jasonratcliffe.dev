@@ -132,6 +132,26 @@ data "aws_iam_policy_document" "workload_boundary" {
     actions   = ["ses:SendEmail", "ses:SendRawEmail"]
     resources = ["arn:${local.partition}:ses:${local.region_account}:identity/*"]
   }
+  # Edge report Lambda: query the CloudFront access logs, publish the summary under data/.
+  # (The policy description below is left unchanged on purpose: editing it forces a replace, which fails while roles use the boundary.)
+  statement {
+    sid     = "EdgeReportQuery"
+    actions = ["logs:StartQuery"]
+    resources = [
+      "arn:${local.partition}:logs:${local.region_account}:log-group:/aws/vendedlogs/${local.workload_prefix}-*",
+      "arn:${local.partition}:logs:${local.region_account}:log-group:/aws/vendedlogs/${local.workload_prefix}-*:*",
+    ]
+  }
+  statement {
+    sid       = "EdgeReportResults"
+    actions   = ["logs:GetQueryResults", "logs:StopQuery"]
+    resources = ["*"] # no resource-level support
+  }
+  statement {
+    sid       = "EdgeReportPublish"
+    actions   = ["s3:PutObject"]
+    resources = ["arn:${local.partition}:s3:::${local.workload_prefix}-origin-*/data/*"]
+  }
 }
 
 resource "aws_iam_policy" "workload_boundary" {
@@ -225,7 +245,39 @@ data "aws_iam_policy_document" "deploy" {
     resources = [
       "arn:${local.partition}:logs:${local.region_account}:log-group:/aws/lambda/${local.workload_prefix}-*",
       "arn:${local.partition}:logs:${local.region_account}:log-group:/aws/lambda/${local.workload_prefix}-*:*",
+      "arn:${local.partition}:logs:${local.region_account}:log-group:/aws/vendedlogs/${local.workload_prefix}-*",
+      "arn:${local.partition}:logs:${local.region_account}:log-group:/aws/vendedlogs/${local.workload_prefix}-*:*",
     ]
+  }
+
+  statement {
+    sid = "EdgeLogDelivery" # CloudFront access logs -> CloudWatch Logs
+    actions = [
+      "logs:PutDeliverySource", "logs:GetDeliverySource", "logs:DeleteDeliverySource",
+      "logs:PutDeliveryDestination", "logs:GetDeliveryDestination", "logs:DeleteDeliveryDestination",
+      "logs:CreateDelivery", "logs:GetDelivery", "logs:DeleteDelivery", "logs:UpdateDeliveryConfiguration",
+      "logs:TagResource", "logs:UntagResource", "logs:ListTagsForResource",
+    ]
+    resources = [
+      "arn:${local.partition}:logs:${local.region_account}:delivery-source:${local.workload_prefix}-*",
+      "arn:${local.partition}:logs:${local.region_account}:delivery-destination:${local.workload_prefix}-*",
+      "arn:${local.partition}:logs:${local.region_account}:delivery:*", # delivery IDs are generated
+    ]
+  }
+
+  statement {
+    sid       = "EdgeLogDeliveryRead"
+    actions   = ["logs:DescribeDeliverySources", "logs:DescribeDeliveryDestinations", "logs:DescribeDeliveries", "logs:DescribeResourcePolicies"]
+    resources = ["*"] # list APIs, no resource-level support
+  }
+
+  statement {
+    sid = "EdgeSchedule"
+    actions = [
+      "events:PutRule", "events:DeleteRule", "events:DescribeRule", "events:PutTargets", "events:RemoveTargets",
+      "events:ListTargetsByRule", "events:TagResource", "events:UntagResource", "events:ListTagsForResource",
+    ]
+    resources = ["arn:${local.partition}:events:${local.region_account}:rule/${local.workload_prefix}-*"]
   }
 
   statement {
@@ -311,4 +363,33 @@ resource "aws_iam_role_policy_attachment" "apply_deploy" {
 resource "aws_iam_role_policy_attachment" "apply_state" {
   role       = aws_iam_role.apply.name
   policy_arn = aws_iam_policy.state_access.arn
+}
+
+# Lets the CloudWatch log-delivery service write CloudFront access logs into resume-site log groups.
+# Owned here (admin) so the apply role never needs the account-wide logs:PutResourcePolicy.
+data "aws_iam_policy_document" "vended_logs" {
+  statement {
+    sid       = "CloudFrontAccessLogDelivery"
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["arn:${local.partition}:logs:${local.region_account}:log-group:/aws/vendedlogs/${local.workload_prefix}-*:log-stream:*"]
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:${local.partition}:logs:${local.region_account}:*"]
+    }
+  }
+}
+
+resource "aws_cloudwatch_log_resource_policy" "vended_logs" {
+  policy_name     = "${var.project}-vended-logs"
+  policy_document = data.aws_iam_policy_document.vended_logs.json
 }

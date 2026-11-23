@@ -37,8 +37,7 @@ jobs:
         with:
           python-version: '3.13'
       - name: Lambda unit tests
-        run: python -m unittest -v
-        working-directory: infra/main/lambda/contact
+        run: for d in contact edge_report; do (cd "infra/main/lambda/$d" && python -m unittest -v); done
       - run: npm ci
         working-directory: site
       - run: npx playwright install --with-deps chromium
@@ -117,16 +116,31 @@ jobs:
           dist_id=$(terraform output -raw distribution_id)
           echo "::add-mask::$bucket"
           echo "::add-mask::$dist_id"
+          edge_fn=$(terraform output -raw edge_report_function)
+          echo "::add-mask::$edge_fn"
           echo "SITE_BUCKET=$bucket" >> "$GITHUB_ENV"
           echo "DISTRIBUTION_ID=$dist_id" >> "$GITHUB_ENV"
+          echo "EDGE_REPORT_FUNCTION=$edge_fn" >> "$GITHUB_ENV"
       - name: Upload fingerprinted assets (immutable, kept for old pages)
         run: |
           aws s3 sync dist/_astro "s3://$SITE_BUCKET/_astro" \
             --cache-control "public,max-age=31536000,immutable" --only-show-errors
       - name: Upload pages and files (revalidate)
         run: |
-          aws s3 sync dist "s3://$SITE_BUCKET" --delete --exclude "_astro/*" \
+          aws s3 sync dist "s3://$SITE_BUCKET" --delete --exclude "_astro/*" --exclude "data/*" \
             --cache-control "public,max-age=300,must-revalidate" --only-show-errors
+      - name: Refresh edge report
+        # Runs before the invalidation so the fresh data/edge-threats.json is served right away.
+        # A failure only warns: the site is already published and the daily schedule retries.
+        run: |
+          if aws lambda invoke --function-name "$EDGE_REPORT_FUNCTION" --payload '{}' \
+               --cli-binary-format raw-in-base64-out --query FunctionError --output text edge-report.json > invoke.txt \
+             && ! grep -qv '^None$' invoke.txt; then
+            echo "Edge report refreshed."
+          else
+            echo "::warning::Edge report Lambda failed; /edge/ keeps the previous data until the daily run."
+          fi
+          rm -f edge-report.json invoke.txt
       - name: Invalidate CloudFront
         run: |
           id=$(aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths '/*' --query Invalidation.Id --output text)
@@ -142,6 +156,13 @@ jobs:
           done
           test "$(curl -s -o /dev/null -w '%{http_code}' "$url/resume.pdf")" = 200
           test "$(curl -s -o /dev/null -w '%{http_code}' "$url/architecture/")" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/edge/")" = 200
+          if [ "$(curl -s -o edge.json -w '%{http_code}' "$url/data/edge-threats.json")" = 200 ]; then
+            jq -e '.version == 1' edge.json > /dev/null
+          else
+            echo "::warning::data/edge-threats.json not published yet"
+          fi
+          rm -f edge.json
           test "$(curl -s -o /dev/null -w '%{http_code}' "$url/.well-known/security.txt")" = 200
           test "$(curl -s -o /dev/null -w '%{http_code}' "$url/does-not-exist")" = 404
           test "$(curl -s -o /dev/null -w '%{redirect_url}' "https://www.$SITE_DOMAIN/blog/")" = "$url/blog/"

@@ -19,3 +19,9 @@ output "ses_recipient_verification" {
   description = "Recipient verification state. If not SUCCESS, click the link AWS emailed to the contact inbox."
   value       = aws_sesv2_email_identity.recipient.verified_for_sending_status ? "verified" : "pending: check the contact inbox for an AWS verification email"
 }
+
+output "edge_report_function" {
+  description = "Lambda that writes data/edge-threats.json; the deploy job runs it once after publishing."
+  value       = aws_lambda_function.edge_report.function_name
+  sensitive   = true
+}

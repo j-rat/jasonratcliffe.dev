@@ -8,6 +8,7 @@ const controls = [
   { layer: 'Headers', what: 'Response headers policy', controls: ['HSTS (2 years, includeSubDomains, preload)', 'Strict CSP: self-only scripts, no inline script, frame-ancestors none', 'nosniff, Referrer-Policy, Permissions-Policy, COOP/CORP'] },
   { layer: 'Origin', what: 'Private S3 bucket', controls: ['Block Public Access on, ACLs disabled (bucket owner enforced)', 'Origin Access Control: bucket policy allows only this distribution', 'SSE encryption, versioning for instant rollback, TLS-only bucket policy'] },
   { layer: 'Contact API', what: 'HTTP API → Lambda → SES', controls: ['Same-origin route through the CDN (no CORS, no extra CSP origin)', 'Stage throttling returns 429 on bursts; honeypot drops bots', 'Secret origin header so the API only answers the CDN', 'Lambda role can send only from the site domain identity; recipient never leaves the backend'] },
+  { layer: 'Detection', what: 'Edge telemetry', controls: ['CloudFront access logs to CloudWatch Logs, with viewer IPs and cookies excluded at the source', 'Daily Lambda sorts probes into MITRE ATT&CK techniques and checks that none got a 200', 'Published summary only: no IPs, no query strings, sanitized paths'] },
   { layer: 'IaC', what: 'Terraform', controls: ['Remote state in a dedicated S3 bucket: versioned, encrypted, public access blocked, TLS-only', 'Native S3 state locking', 'Account-specific values kept out of git'] },
   { layer: 'CI/CD', what: 'GitHub Actions', controls: ['OIDC federation – no long-lived AWS keys anywhere', 'PRs assume a read-only plan role; main uses an apply role behind a protected environment', 'Build fails if the PII scanner finds an email, phone or address'] },
 ];
@@ -130,7 +131,7 @@ const controls = [
       ))}
     </div>
 
-    <p class="muted mono note">Want to verify? <code>curl -sI https://jasonratcliffe.dev</code> shows every header above. The infrastructure is written in Terraform – read about it on the <a href="/blog/">blog</a>.</p>
+    <p class="muted mono note">Want to verify? <code>curl -sI https://jasonratcliffe.dev</code> shows every header above. The infrastructure is written in Terraform – read about it on the <a href="/blog/">blog</a>. See who is probing the site on the <a href="/edge/">edge telemetry</a> page.</p>
   </div>
 </Base>
 

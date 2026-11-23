@@ -50,8 +50,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
-      - run: python -m unittest -v
-        working-directory: infra/main/lambda/contact
+      - run: for d in contact edge_report; do (cd "infra/main/lambda/$d" && python -m unittest -v); done
 
   terraform-lint:
     name: Terraform fmt + validate

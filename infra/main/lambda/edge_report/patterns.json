@@ -1,0 +1,126 @@
+{
+  "_comment": "Probe categories for /edge/. Checked in order; first match wins. Regexes run case-insensitively against the URL-decoded path (path) or path and query string (path_or_query). ua_scanner categories match requests from known scanner user agents that matched nothing above.",
+  "categories": [
+    {
+      "id": "exploit-attempts",
+      "label": "Exploit attempts",
+      "tactic": "Initial Access",
+      "mitre": [{"id": "T1190", "name": "Exploit Public-Facing Application"}],
+      "path_or_query": [
+        "\\.\\.[/\\\\]",
+        "\\$\\{jndi:",
+        "<script",
+        "union(\\s|\\+)+(all(\\s|\\+)+)?select",
+        "/etc/(passwd|shadow)",
+        "php://",
+        "\\x00",
+        "(^|/)cgi-bin/",
+        "(^|/)boaform/",
+        "(\\s|\\+|;|\\|)(wget|curl)(\\s|\\+)",
+        "'\\s*or\\s*'?1'?\\s*=\\s*'?1"
+      ]
+    },
+    {
+      "id": "private-keys",
+      "label": "Private keys",
+      "tactic": "Credential Access",
+      "mitre": [{"id": "T1552.004", "name": "Unsecured Credentials: Private Keys"}],
+      "path": [
+        "(^|/)id_(rsa|dsa|ecdsa|ed25519)(\\.pub)?$",
+        "\\.(pem|key|ppk|p12|pfx|jks)$",
+        "(^|/)\\.ssh(/|$)"
+      ]
+    },
+    {
+      "id": "credentials-in-files",
+      "label": "Secret and credential files",
+      "tactic": "Credential Access",
+      "mitre": [{"id": "T1552.001", "name": "Unsecured Credentials: Credentials In Files"}],
+      "path": [
+        "(^|/)\\.env([._-][a-z0-9_.-]+)?$",
+        "(^|/)\\.aws(/|$)",
+        "(^|/)credentials(\\.[a-z]+)?$",
+        "(^|/)(config|settings|secrets?|parameters|appsettings|application)\\.(json|ya?ml|php|ini|xml|py|js|properties)$",
+        "(^|/)(wp-config|configuration|localsettings)\\.php",
+        "(^|/)\\.(npmrc|pypirc|netrc|htpasswd|git-credentials|bash_history|zsh_history)$",
+        "(^|/)\\.docker/config\\.json$",
+        "(^|/)terraform\\.tfstate",
+        "(^|/)\\.vscode/sftp\\.json$"
+      ]
+    },
+    {
+      "id": "code-repositories",
+      "label": "Source repositories",
+      "tactic": "Collection",
+      "mitre": [{"id": "T1213.003", "name": "Data from Information Repositories: Code Repositories"}],
+      "path": [
+        "(^|/)\\.(git|svn|hg|bzr)(/|$)",
+        "(^|/)\\.gitconfig$"
+      ]
+    },
+    {
+      "id": "backups-and-dumps",
+      "label": "Backups and database dumps",
+      "tactic": "Collection",
+      "mitre": [
+        {"id": "T1005", "name": "Data from Local System"},
+        {"id": "T1595.003", "name": "Active Scanning: Wordlist Scanning"}
+      ],
+      "path": [
+        "\\.(sql|sqlite3?|db|bak|backup|old|orig|swp|dump)$",
+        "\\.(zip|tar|tgz|tar\\.gz|gz|rar|7z)$",
+        "(^|/)(backups?|dumps?|db|database)(/|$)",
+        "~$"
+      ]
+    },
+    {
+      "id": "server-fingerprinting",
+      "label": "Server and framework fingerprinting",
+      "tactic": "Reconnaissance",
+      "mitre": [{"id": "T1592.002", "name": "Gather Victim Host Information: Software"}],
+      "path": [
+        "(^|/)(server-status|server-info|actuator|metrics|debug|trace|_profiler|telescope|elmah\\.axd)(/|$)",
+        "(^|/)(phpinfo|info|test)\\.php$",
+        "(^|/)\\.ds_store$",
+        "(^|/)(web\\.config|crossdomain\\.xml|clientaccesspolicy\\.xml)$",
+        "(^|/)(swagger(-ui)?|api-docs|v[23]/api-docs|graphql|graphiql)(/|\\.json|\\.html|$)",
+        "(^|/)\\.well-known/(?!security\\.txt$)"
+      ]
+    },
+    {
+      "id": "cms-admin-enumeration",
+      "label": "CMS and admin panel enumeration",
+      "tactic": "Reconnaissance",
+      "mitre": [{"id": "T1595.003", "name": "Active Scanning: Wordlist Scanning"}],
+      "path": [
+        "(^|/)(wp-login\\.php|wp-admin|xmlrpc\\.php|wp-content|wp-includes|wp-json)",
+        "(^|/)(admin|administrator|phpmyadmin|pma|myadmin|cpanel|webmail|manager/html|console|jenkins|solr|owa|user/login|login)(/|\\.php|\\.html?|$)",
+        "\\.(php\\d?|asp|aspx|jsp|cgi|pl|do|action)$"
+      ]
+    },
+    {
+      "id": "vulnerability-scanning",
+      "label": "Vulnerability scanner traffic",
+      "tactic": "Reconnaissance",
+      "mitre": [{"id": "T1595.002", "name": "Active Scanning: Vulnerability Scanning"}],
+      "ua_scanner": true
+    }
+  ],
+  "user_agents": [
+    {"family": "Nuclei", "ua": "nuclei", "scanner": true},
+    {"family": "zgrab", "ua": "zgrab", "scanner": true},
+    {"family": "Nikto", "ua": "nikto", "scanner": true},
+    {"family": "masscan", "ua": "masscan", "scanner": true},
+    {"family": "Nmap", "ua": "nmap", "scanner": true},
+    {"family": "sqlmap", "ua": "sqlmap", "scanner": true},
+    {"family": "WPScan", "ua": "wpscan", "scanner": true},
+    {"family": "Internet census scanner", "ua": "censys|shodan|internet-measurement|expanse|paloaltonetworks|leakix|netcraft|binaryedge|onyphe|modat", "scanner": true},
+    {"family": "Search engine crawler", "ua": "googlebot|bingbot|duckduckbot|applebot|yandex|baiduspider"},
+    {"family": "Headless browser", "ua": "headlesschrome|phantomjs|puppeteer|playwright"},
+    {"family": "curl", "ua": "^curl/"},
+    {"family": "Python HTTP client", "ua": "python-requests|python-urllib|aiohttp|httpx|^python/"},
+    {"family": "Go HTTP client", "ua": "go-http-client"},
+    {"family": "Other HTTP library", "ua": "wget|libwww-perl|^java/|okhttp|axios|node-fetch|^ruby"},
+    {"family": "Browser-like", "ua": "^mozilla/5\\.0"}
+  ]
+}

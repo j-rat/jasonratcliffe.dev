@@ -6,7 +6,7 @@ import { profile } from '../data/resume';
 interface Props {
   title?: string;
   description?: string;
-  active?: 'home' | 'architecture' | 'threat-model' | 'blog';
+  active?: 'home' | 'architecture' | 'threat-model' | 'edge' | 'blog';
 }
 
 const { title, description = profile.tagline, active = 'home' } = Astro.props;
@@ -17,6 +17,7 @@ const nav = [
   { href: '/#experience', label: 'Experience', key: 'home' },
   { href: '/architecture/', label: 'Architecture', key: 'architecture' },
   { href: '/threat-model/', label: 'Threat model', key: 'threat-model' },
+  { href: '/edge/', label: 'Edge', key: 'edge' },
   { href: '/blog/', label: 'Blog', key: 'blog' },
   { href: '/#contact', label: 'Contact', key: 'contact' },
 ];
@@ -101,8 +102,8 @@ const nav = [
 
   @media (max-width: 760px) {
     .bar { padding-top: 8px; padding-bottom: 8px; gap: 8px; }
-    nav { order: 3; width: 100%; overflow-x: auto; }
-    nav ul { flex-wrap: nowrap; }
+    nav { order: 3; width: 100%; }
+    nav ul { flex-wrap: wrap; }
     nav a { white-space: nowrap; padding: 6px 8px; font-size: 0.82rem; }
     .term-btn kbd { display: none; }
   }

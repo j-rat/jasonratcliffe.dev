@@ -21,6 +21,7 @@ credentials.
 | [10](#part-10--troubleshooting) | Troubleshooting | — | — |
 | [11](#part-11--optional-hardening) | Optional hardening | — | — |
 | [12](#part-12--tear-down) | Tear down | — | — |
+| [13](#part-13--edge-telemetry-dashboard) | Edge telemetry dashboard: how it works, upgrades, patterns | — | — |
 
 ---
 
@@ -165,9 +166,10 @@ make bootstrap-init
 make bootstrap-plan
 ```
 
-✅ **Expected:** `Plan: 18 to add, 0 to change, 0 to destroy.` (17 if you reuse an existing OIDC provider.)
+✅ **Expected:** `Plan: 19 to add, 0 to change, 0 to destroy.` (18 if you reuse an existing OIDC provider.)
 Read the plan: it creates an S3 bucket `resume-site-tfstate-<account-id>`, a Route 53 zone, two IAM roles
-`gha-resume-site-plan` and `gha-resume-site-apply`, and three IAM policies.
+`gha-resume-site-plan` and `gha-resume-site-apply`, three IAM policies, and a CloudWatch Logs resource
+policy that lets CloudFront access logs be delivered to `/aws/vendedlogs/resume-site-*` log groups.
 
 ```bash
 make bootstrap-apply
@@ -444,7 +446,7 @@ git push -u origin main
 2. **build** runs first (about 2–3 minutes): Lambda tests, site build, PDF, PII scan.
 3. **Terraform apply + publish** then shows **Waiting** with the banner *"Review pending deployments"*.
    - Click **Review deployments** → ☑ **production** → **Approve and deploy**.
-4. The job runs `terraform plan` and `apply`. On the first run this creates **42 resources** and takes
+4. The job runs `terraform plan` and `apply`. On the first run this creates **53 resources** and takes
    **10–25 minutes**, mostly waiting on the certificate and the CloudFront distribution. Open the run's
    **Summary** to see the list of resources it created. Full plan output is intentionally never printed,
    because it contains ARNs.
@@ -528,6 +530,25 @@ Then, in a browser:
    - Chrome DevTools → **Lighthouse** → Mobile → all categories **90+**
 3. Check the email side at <https://www.mail-tester.com>. Optionally temporarily set its address as
    `CONTACT_TO_EMAIL` and send a form message; it should show SPF, DKIM and DMARC passing.
+
+### 7.1 Check the edge dashboard
+
+The deploy runs the edge report once, so `/edge/` has data straight away. To see your own probe on it:
+
+```bash
+curl -s -o /dev/null -w 'env %{http_code}\n' $SITE/.env        # expect 404
+
+# Refresh the report now instead of waiting for 00:15 UTC (admin creds)
+FN=$(terraform -chdir=infra/main output -raw edge_report_function)
+aws lambda invoke --function-name "$FN" --payload '{}' --cli-binary-format raw-in-base64-out /dev/stdout
+
+curl -s $SITE/data/edge-threats.json | jq '.generated_at, .totals, (.categories[] | select(.id=="credentials-in-files") | {count, statuses})'
+```
+
+✅ **Expected:** the Lambda returns `{"requests": …, "probes": …}`. The JSON's `credentials-in-files`
+entry shows your request with status `404`, and `/edge/` shows it under **T1552.001** with a green
+leak check. CloudFront delivers logs within a few minutes, so if the count is still 0, wait 5 minutes and
+invoke again.
 
 ---
 
@@ -617,6 +638,12 @@ almost never need this. If you do, download the older `main/terraform.tfstate` v
 | Every page is a 404 after deploy | The upload steps didn't run, or the sync failed | **Re-run failed jobs** on the deploy run. Check `aws s3 ls s3://$B/index.html`. |
 | Old content still shows | Browser cache (HTML is cacheable for 5 minutes) | Hard refresh. The deploy already invalidates `/*` at the edge. |
 | Smoke test fails on the direct-S3 check (not 403) | Bucket became reachable | **Treat as an incident:** check Block Public Access and the bucket policy, then re-run the deploy so Terraform restores them. |
+| `AccessDenied ... logs:PutDeliverySource` (or `events:PutRule`) during apply | Bootstrap was applied before the edge dashboard existed | Run `make bootstrap-plan bootstrap-apply` locally (part 13.1), then **Re-run failed jobs**. |
+| `AccessDenied ... logs:PutResourcePolicy` on `aws_cloudwatch_log_delivery.edge` | The log resource policy from bootstrap is missing or doesn't cover the log group | Check `aws logs describe-resource-policies` lists `resume-site-vended-logs`. If it does and the error persists, add `logs:PutResourcePolicy` to the `EdgeLogDeliveryRead` statement in `infra/bootstrap/github-oidc.tf` (account-wide, so prefer fixing the policy), re-apply bootstrap, re-run. |
+| Deploy warns `Edge report Lambda failed` | The report Lambda errored (often: no access logs yet right after the first deploy) | Check CloudWatch Logs → `/aws/lambda/resume-site-edge-report`. The site is unaffected; the daily run retries. |
+| `/edge/` says **No data yet** | `data/edge-threats.json` hasn't been written | Invoke the Lambda (part 7.1). If a deploy wiped it, check the sync still has `--exclude "data/*"`. |
+| `/edge/` shows a yellow *daily refresh may have failed* | The report is more than 36 hours old | Check the EventBridge rule `resume-site-edge-report-daily` is enabled and the Lambda's logs for errors. |
+| `/edge/` shows a red **ALERT** | A file probe (`.env`, `.git`, a backup…) got HTTP 200 | **Treat as an incident:** find the object (`aws s3 ls s3://$B/<path>`), remove it from `site/public` or the build, deploy, and rotate anything it contained. |
 
 ---
 
@@ -651,8 +678,65 @@ almost never need this. If you do, download the older `main/terraform.tfstate` v
    terraform -chdir=infra/main destroy
    ```
 
+   This also removes the edge dashboard's log delivery, both log groups (with their logs), the report
+   Lambda and its schedule.
+
 2. Switch Squarespace back to **Use Squarespace nameservers**.
 3. Bootstrap resources have `prevent_destroy` on the state bucket and zone. Remove those `lifecycle`
    blocks first, empty the state bucket (including all versions), then run
    `terraform -chdir=infra/bootstrap destroy`.
 4. In GitHub, delete the environment and the secrets.
+
+---
+
+## Part 13 – Edge telemetry dashboard
+
+`/edge/` shows probes against the site from the last 24 hours, mapped to MITRE ATT&CK, plus a 30-day
+trend. It refreshes daily.
+
+```text
+CloudFront access logs ──▶ CloudWatch Logs /aws/vendedlogs/resume-site-cloudfront (30 days)
+   (no viewer IP, X-Forwarded-For or cookies: excluded in the log delivery's record_fields)
+EventBridge rule resume-site-edge-report-daily (00:15 UTC) ──▶ Lambda resume-site-edge-report
+   Logs Insights query → categories from infra/main/lambda/edge_report/patterns.json
+   ──▶ s3://<site-bucket>/data/edge-threats.json (max-age 300) ──▶ /edge/ fetches it
+```
+
+- **Permissions.** The Lambda's role can run `logs:StartQuery` on the CloudFront log group and write
+  exactly one object, `data/edge-threats.json`. The workload boundary caps it at `/aws/vendedlogs/resume-site-*`
+  and `data/*`.
+- **Privacy.** IPs are never logged. The published JSON never contains query strings or paths that
+  didn't match a pattern. Matched paths are shortened to 80 characters, emails are redacted, and
+  characters like `<` are percent-encoded. The page renders everything as text.
+- **Deploys don't touch the data.** The `--delete` sync excludes `data/*`. Keep that exclude, or every
+  deploy erases the dashboard.
+- **Cost.** Well under $1 a month at personal-site traffic.
+
+### 13.1 Upgrading an existing deployment
+
+If bootstrap was applied before the dashboard existed, CI's apply role lacks the new permissions. Before
+merging the change that adds `infra/main/edge.tf`:
+
+```bash
+make bootstrap-plan    # expect: 1 to add, 2 to change, 0 to destroy
+make bootstrap-apply
+```
+
+Then merge and approve the deploy as usual. It adds 11 resources to the main stack.
+
+### 13.2 Adding or changing a probe pattern
+
+1. Edit `infra/main/lambda/edge_report/patterns.json`. Categories are checked in order and the first
+   match wins, so put more specific categories first. Each needs a MITRE technique `id` (`T####` or
+   `T####.###`) and name.
+2. Add a case to `ClassifyTests.CASES` in `test_handler.py`, then run `make test`.
+3. Merge and approve the deploy. The deploy refreshes the report, so the page reflects the change at once.
+
+### 13.3 Reading the page
+
+- **Leak check, green:** no file-style probe got a 200. This is the normal state.
+- **ALERT, red:** a request for something like `.env` or `.git/config` got a 200. Treat it as an
+  incident (part 10).
+- **Daily refresh may have failed, yellow:** the data is more than 36 hours old (part 10).
+- **HTTP 200 under "Vulnerability scanner traffic" or "Exploit attempts"** is expected: scanners also
+  request real pages like `/`.

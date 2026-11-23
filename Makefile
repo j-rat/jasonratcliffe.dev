@@ -26,8 +26,9 @@ build: ## Build site, render PDF, run PII scan
 scan: ## Re-run the PII / secret scan on dist + repo
 	cd site && npm run scan
 
-test: ## Contact Lambda unit tests
+test: ## Lambda unit tests (contact form, edge report)
 	cd $(MAIN)/lambda/contact && python3 -m unittest -v
+	cd $(MAIN)/lambda/edge_report && python3 -m unittest -v
 
 lint: ## terraform fmt + validate (no AWS access needed)
 	$(TF) fmt -check -recursive infra
@@ -65,7 +66,7 @@ publish: ## Upload site/dist and invalidate CloudFront
 	@bucket=$$($(TF) -chdir=$(MAIN) output -raw site_bucket); \
 	dist=$$($(TF) -chdir=$(MAIN) output -raw distribution_id); \
 	aws s3 sync site/dist/_astro "s3://$$bucket/_astro" --cache-control "public,max-age=31536000,immutable" --only-show-errors && \
-	aws s3 sync site/dist "s3://$$bucket" --delete --exclude "_astro/*" --cache-control "public,max-age=300,must-revalidate" --only-show-errors && \
+	aws s3 sync site/dist "s3://$$bucket" --delete --exclude "_astro/*" --exclude "data/*" --cache-control "public,max-age=300,must-revalidate" --only-show-errors && \
 	aws cloudfront create-invalidation --distribution-id "$$dist" --paths '/*' --query Invalidation.Status --output text
 
 deploy: check plan apply publish ## Laptop fallback: check, plan, apply, publish

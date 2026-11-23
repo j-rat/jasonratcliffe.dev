@@ -30,6 +30,7 @@ Prospective hiring managers, recruiters and networking contacts who know Jason w
 | 10 | Strong HTTP security posture on the live site | curl -I https://jasonratcliffe.dev shows Strict-Transport-Security, Content-Security-Policy without unsafe-inline scripts, X-Content-Type-Options, Referrer-Policy and Permissions-Policy; http:// redirects to https://; www redirects to the bare domain. |
 | 11 | Responsive, accessible layout in a dark, modern cloud-security theme | At 375px wide nothing scrolls sideways and every section is readable; keyboard Tab reaches every link, the terminal button and the form; Lighthouse accessibility is 90+. |
 | 12 | Detailed step-by-step guide for deploying with GitHub Actions (docs/DEPLOYMENT.md): one-time bootstrap, DNS cutover, GitHub OIDC roles, secrets/variables, PR plan workflow, main-branch apply and deploy, verification and rollback | Following docs/DEPLOYMENT.md top to bottom from a fresh AWS account and empty GitHub repo, every step names the exact command or click, what you should see, and how to fix the common failure; no step requires long-lived AWS access keys in GitHub. |
+| 13 | Edge threat dashboard (/edge/): daily summary of CloudFront access logs showing enumeration and secret-leakage probes by category, mapped to MITRE ATT&CK, with the status codes returned, top probed paths, scanner families, countries and a 30-day trend | Request /.env on the live site and get 404; after the next daily run (or a manual run of the summary Lambda), /edge/ shows the probe under T1552.001 with status 404 and a 'last updated' time under 24 hours old; data/edge-threats.json contains no IP addresses or query strings; the page loads with no CSP errors at 375px and 1366px. |
 
 ## Nice to have
 
@@ -41,7 +42,7 @@ Prospective hiring managers, recruiters and networking contacts who know Jason w
 ## Out of scope
 
 - Publishing personal contact details (they are a reject_if line)
-- Analytics or visitor tracking
+- Visitor analytics or tracking (cookies, third-party scripts, per-visitor profiles); aggregate edge security telemetry (M13) is in scope
 - A CMS or admin login for the blog
 - A hosted inbox such as Workspace or Fastmail
 - A paid web application firewall subscription
@@ -63,6 +64,7 @@ Prospective hiring managers, recruiters and networking contacts who know Jason w
 - A recruiter has to use the terminal to find the resume
 - Any resume fact on the site differs from the .docx (title, dates, certs, awards, numbers)
 - The origin S3 bucket is publicly readable
+- The edge dashboard publishes a viewer IP address, a full query string or a path that didn't match a probe pattern
 
 ## Open risks
 

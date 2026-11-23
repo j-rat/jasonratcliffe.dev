@@ -4,6 +4,7 @@ import {
   profile, summary, roles, earlierTitles, certifications, skills, projects, awards, education, training,
 } from '../data/resume';
 import { stride } from '../data/threat-model';
+import { loadReport, leaks } from './edge';
 
 type Part = string | { text: string; cls?: string; href?: string };
 type Line = Part[] | string;
@@ -154,6 +155,25 @@ export function initTerminal(): void {
         print(['Diagram: ', { text: '/architecture/', href: '/architecture/' }]);
       },
     },
+    edge: {
+      help: 'probes seen at the edge in the last 24h, by ATT&CK technique',
+      run: async () => {
+        const r = await loadReport();
+        if (!r) {
+          print([{ text: 'No edge report yet (it runs daily at 00:15 UTC).', cls: 'warn' }]);
+        } else {
+          print([{ text: 'requests'.padEnd(12), cls: 'acc' }, `${r.totals.requests}`, { text: '   probes ', cls: 'acc' }, `${r.totals.probes}`]);
+          [...r.categories].filter((c) => c.count).sort((a, b) => b.count - a.count).slice(0, 3).forEach((c) =>
+            print([{ text: `${c.mitre.map((m) => m.id).join('/')}`.padEnd(18), cls: 'acc' }, `${c.label} `, { text: `× ${c.count}`, cls: 'dim' }]));
+          const exposed = leaks(r);
+          print(exposed.length
+            ? [{ text: `ALERT: 200 returned for ${exposed.join(', ')}`, cls: 'err' }]
+            : [{ text: '✓ ', cls: 'ok' }, { text: 'no file probe got a 200', cls: 'dim' }]);
+        }
+        print(['Dashboard: ', { text: '/edge/', href: '/edge/' }]);
+        scrollDown();
+      },
+    },
     resume: {
       help: 'download the PDF resume',
       run: () => {
@@ -180,10 +200,10 @@ export function initTerminal(): void {
       },
     },
     open: {
-      help: 'open a page  (open architecture|threat-model|blog|home)',
+      help: 'open a page  (open architecture|threat-model|edge|blog|home)',
       run: ([page]) => {
-        const map: Record<string, string> = { home: '/', architecture: '/architecture/', 'threat-model': '/threat-model/', blog: '/blog/' };
-        if (!page || !map[page]) return print([{ text: 'usage: open architecture|threat-model|blog|home', cls: 'warn' }]);
+        const map: Record<string, string> = { home: '/', architecture: '/architecture/', 'threat-model': '/threat-model/', edge: '/edge/', blog: '/blog/' };
+        if (!page || !map[page]) return print([{ text: 'usage: open architecture|threat-model|edge|blog|home', cls: 'warn' }]);
         goTo(map[page]);
       },
     },

@@ -1,0 +1,118 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Edge telemetry" description="Live probes against this site: enumeration and secret-hunting requests seen at the CloudFront edge, mapped to MITRE ATT&CK." active="edge">
+  <div class="wrap page edge-page" data-edge>
+    <p class="eyebrow">Edge telemetry</p>
+    <h1>Who’s knocking: live probes against this site</h1>
+    <p class="lead muted">
+      Every public site gets scanned. This page summarizes the last 24 hours of requests at the CloudFront edge
+      that went looking for secrets, source code, backups or admin panels, maps each pattern to a MITRE ATT&amp;CK
+      technique, and shows what the site answered. It refreshes daily.
+    </p>
+
+    <section class="strip card" aria-label="Summary">
+      <dl class="stats" data-edge-stats>
+        <div><dt>Last updated</dt><dd data-k="updated">…</dd></div>
+        <div><dt>Requests (24h)</dt><dd data-k="requests">…</dd></div>
+        <div><dt>Probes (24h)</dt><dd data-k="probes">…</dd></div>
+        <div><dt>Probe share</dt><dd data-k="share">…</dd></div>
+      </dl>
+      <p class="leak mono" data-edge-leak role="status">Loading the latest report…</p>
+    </section>
+
+    <section aria-labelledby="techniques-h">
+      <h2 id="techniques-h">ATT&amp;CK techniques observed</h2>
+      <p class="muted small">Mapped from what each request tried to reach. The mapping shows intent, not success.</p>
+      <div class="techniques" data-edge-techniques></div>
+    </section>
+
+    <section aria-labelledby="trend-h">
+      <h2 id="trend-h">30-day trend</h2>
+      <div class="card trend" data-edge-trend></div>
+    </section>
+
+    <div class="cols">
+      <section class="card" aria-labelledby="paths-h">
+        <h2 id="paths-h">Top probed paths</h2>
+        <ol class="paths mono" data-edge-paths></ol>
+      </section>
+      <section class="card" aria-labelledby="families-h">
+        <h2 id="families-h">Scanner families</h2>
+        <ul class="bars" data-edge-families></ul>
+      </section>
+      <section class="card" aria-labelledby="countries-h">
+        <h2 id="countries-h">Countries</h2>
+        <ul class="bars" data-edge-countries></ul>
+      </section>
+    </div>
+
+    <section class="card how" aria-labelledby="how-h">
+      <h2 id="how-h">How this works</h2>
+      <ul>
+        <li>CloudFront delivers access logs to CloudWatch Logs. Viewer IP addresses, forwarded-for headers and cookies are excluded at the source, so they are never stored.</li>
+        <li>Once a day a Lambda function runs a Logs Insights query, sorts requests into categories from a versioned pattern file, and publishes a summary to this site.</li>
+        <li>Only paths that matched a probe pattern are shown, shortened, with emails redacted and unsafe characters encoded. Query strings are never published.</li>
+        <li>Anyone can send requests, so counts are what the edge observed, not verified attacks.</li>
+      </ul>
+      <p class="muted small">See <a href="/architecture/">how this site is hosted and secured</a>. In the terminal (press <kbd>`</kbd>), run <code>edge</code>.</p>
+    </section>
+  </div>
+</Base>
+
+<script>
+  import { initEdge } from '../scripts/edge';
+  initEdge();
+</script>
+
+<style is:global>
+  .edge-page { padding-top: 48px; padding-bottom: 32px; }
+  .edge-page .lead { max-width: 72ch; font-size: 1.08rem; }
+  .edge-page section { margin-top: 28px; }
+  .edge-page h2 { font-size: 1.2rem; margin: 0 0 8px; }
+  .edge-page .small { font-size: 0.85rem; }
+  .edge-page .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
+  @media (min-width: 760px) { .edge-page .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .edge-page .stats dt { font: 500 0.72rem var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+  .edge-page .stats dd { margin: 2px 0 0; font: 700 1.25rem var(--mono); overflow-wrap: anywhere; }
+  .edge-page .leak { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); font-size: 0.9rem; }
+  .edge-page .leak[data-state='ok'] { color: var(--ok); border-color: var(--ok); }
+  .edge-page .leak[data-state='alert'] { color: var(--danger); border-color: var(--danger); }
+  .edge-page .leak[data-state='warn'] { color: var(--warn); border-color: var(--warn); }
+  .edge-page .techniques { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 760px) { .edge-page .techniques { grid-template-columns: 1fr 1fr; } }
+  .edge-page .tech { display: grid; gap: 6px; }
+  .edge-page .tech[data-zero] { opacity: 0.55; }
+  .edge-page .tech header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .edge-page .tech h3 { margin: 0; font-size: 1rem; }
+  .edge-page .tech .count { font: 800 1.4rem var(--mono); color: var(--accent); }
+  .edge-page .tactic { font: 500 0.72rem var(--mono); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .edge-page .ids { display: flex; flex-wrap: wrap; gap: 6px; }
+  .edge-page .ids a { font: 600 0.8rem var(--mono); border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px 10px; text-decoration: none; }
+  .edge-page .codes { font: 0.8rem var(--mono); color: var(--text-muted); }
+  .edge-page .codes .bad { color: var(--danger); font-weight: 700; }
+  .edge-page .trend svg { width: 100%; height: auto; display: block; }
+  .edge-page .trend .probes { fill: var(--accent); }
+  .edge-page .trend .requests { fill: var(--line-strong); }
+  .edge-page .axis-row { display: flex; justify-content: space-between; margin: 6px 0 0; font: 0.75rem var(--mono); color: var(--text-muted); }
+  .edge-page .legend-row { display: flex; gap: 16px; font: 0.8rem var(--mono); color: var(--text-muted); margin-top: 8px; }
+  .edge-page .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .edge-page .swatch.p { background: var(--accent); }
+  .edge-page .swatch.r { background: var(--line-strong); }
+  .edge-page .cols { display: grid; gap: 18px; grid-template-columns: 1fr; margin-top: 28px; }
+  @media (min-width: 900px) { .edge-page .cols { grid-template-columns: 1.4fr 1fr 1fr; } }
+  .edge-page .cols section { margin-top: 0; min-width: 0; }
+  .edge-page .paths { margin: 0; padding-left: 1.6em; display: grid; gap: 6px; font-size: 0.85rem; }
+  .edge-page .paths li { overflow-wrap: anywhere; }
+  .edge-page .paths .n { color: var(--text-muted); margin-left: 8px; }
+  .edge-page .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .edge-page .bars li { display: grid; gap: 3px; font-size: 0.88rem; }
+  .edge-page .bars .row { display: flex; justify-content: space-between; gap: 8px; }
+  .edge-page .bars .n { font-family: var(--mono); color: var(--text-muted); }
+  .edge-page .bars svg { width: 100%; height: 6px; display: block; }
+  .edge-page .bars .track { fill: var(--bg-sunken); }
+  .edge-page .bars .fill { fill: var(--accent); }
+  .edge-page .empty { color: var(--text-muted); font-size: 0.9rem; }
+  .edge-page .how ul { margin: 0 0 10px; padding-left: 1.2em; display: grid; gap: 6px; }
+  .edge-page code { font-family: var(--mono); background: var(--bg-sunken); border: 1px solid var(--line); padding: 1px 6px; border-radius: 4px; }
+</style>
