@@ -28,7 +28,7 @@ cd site && npx astro check                                   # TypeScript/Astro 
 cd infra/main/lambda/contact && python3 -m unittest test_handler.ContactTests.test_honeypot_fakes_success_without_sending -v   # single test
 ```
 
-Terraform isn't installed system-wide on this machine. CI pins 1.16.6 (`TF_VERSION` in both workflows).
+Terraform is installed via Homebrew (`/opt/homebrew/bin/terraform`). CI pins 1.16.6 (`TF_VERSION` in both workflows).
 
 ## Hard rules
 
@@ -47,7 +47,9 @@ Terraform isn't installed system-wide on this machine. CI pins 1.16.6 (`TF_VERSI
 - Terminal and animation output is built with DOM text nodes. Don't introduce `innerHTML`.
 - **The edge report (`data/edge-threats.json`) never contains viewer IPs, query strings or paths that didn't
   match a probe pattern** (spec `reject_if`). IPs aren't even logged: keep `c-ip`, `x-forwarded-for` and
-  `cs(Cookie)` out of `record_fields` in `infra/main/edge.tf`. `/edge/` renders that data with text nodes only,
+  `cs(Cookie)` out of `record_fields` in `infra/main/edge.tf`. Its `contact` block publishes defense counts only
+  (honeypot, bypass, cross-origin, invalid, throttled, wrong route), never the number of real messages sent, and
+  the contact Lambda must keep logging outcomes without names, addresses or message text. `/edge/` renders that data with text nodes only,
   because paths and user agents are attacker-controlled.
 
 ## Architecture (the parts that span files)
@@ -70,7 +72,9 @@ resume facts, and every entry must trace to a line in `resume.ts`. Blog posts ar
 - **Edge telemetry (`/edge/`):** CloudFront access logs go to CloudWatch Logs (`infra/main/edge.tf`). A daily
   EventBridge rule runs `infra/main/lambda/edge_report/handler.py`, which classifies probes with
   `patterns.json` (MITRE ATT&CK-mapped, first match wins) and writes `data/edge-threats.json` to the site
-  bucket. `site/src/scripts/edge.ts` renders it, and the terminal's `edge` command reuses it. Deploys sync with
+  bucket. It also queries the contact Lambda's outcome logs and `/api/*` access logs for 30 days of contact-form
+  defense counts (the deploy smoke test posts `{"smoke_test":true}`, logged as `smoke-test` and excluded).
+  `site/src/scripts/edge.ts` renders it, and the terminal's `edge` command reuses it. Deploys sync with
   `--exclude "data/*"` so they never delete it, then run the Lambda once before invalidating.
 
 **Two stacks and the permission model.**
@@ -88,7 +92,7 @@ Consequences of this model:
   apply role's `iam:CreateRole` is denied.
 - Buckets must be named `resume-site-origin-*`, and Lambda functions and log groups `resume-site-*`
   (vended-log groups `/aws/vendedlogs/resume-site-*`). The boundary lets workload roles do only: Lambda logs,
-  SES send, `logs:StartQuery` on `/aws/vendedlogs/resume-site-*`, and `s3:PutObject` on `resume-site-origin-*/data/*`.
+  SES send, `logs:StartQuery` on `/aws/vendedlogs/resume-site-*` and `/aws/lambda/resume-site-contact`, and `s3:PutObject` on `resume-site-origin-*/data/*`.
 - Changing the boundary's `description` forces a replace, which fails while roles use it. Edit statements only.
 - A new AWS service or action used by `infra/main` usually needs adding to
   `data.aws_iam_policy_document.deploy` in `infra/bootstrap/github-oidc.tf`, applied locally, before CI can use it.

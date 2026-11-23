@@ -95,6 +95,17 @@ class ContactTests(unittest.TestCase):
         self.assertEqual(handler.lambda_handler(event("{not json"), None)["statusCode"], 400)
         self.assertEqual(handler.lambda_handler(event("[1,2]"), None)["statusCode"], 400)
 
+    def test_malformed_body_is_logged(self):
+        with self.assertLogs(level="INFO") as logs:
+            self.assertEqual(handler.lambda_handler(event("{not json"), None)["statusCode"], 400)
+        self.assertIn('"reason": "malformed"', logs.output[-1])
+
+    def test_smoke_test_is_400_and_logged_separately(self):
+        with self.assertLogs(level="INFO") as logs:
+            self.assertEqual(handler.lambda_handler(event({"smoke_test": True}), None)["statusCode"], 400)
+        self.assertIn('"event": "smoke-test"', logs.output[-1])
+        self.assertEqual(self.ses.calls, [])
+
     def test_ses_failure_is_502(self):
         handler._ses = FakeSes(fail=True)
         self.assertEqual(handler.lambda_handler(event(GOOD), None)["statusCode"], 502)

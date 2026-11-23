@@ -169,6 +169,13 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' "http://$SITE_DOMAIN/")" = 301
           # The bucket must not be reachable directly.
           test "$(curl -s -o /dev/null -w '%{http_code}' "https://$SITE_BUCKET.s3.amazonaws.com/index.html")" = 403
-          # The API must refuse requests that bypass CloudFront: send a bad body; CloudFront path should give 400.
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "Origin: $url" -d '{}' "$url/api/contact")" = 400
+          # The API answers through CloudFront: the smoke-test body gets a 400 and is logged as "smoke-test",
+          # so it isn't counted as rejected input on /edge/.
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "Origin: $url" -d '{"smoke_test":true}' "$url/api/contact")" = 400
+          if [ "$(curl -s -o edge.json -w '%{http_code}' "$url/data/edge-threats.json")" = 200 ]; then
+            jq -e '.contact == null or (.contact.totals | has("honeypot"))' edge.json > /dev/null \
+              || echo "::warning::edge report has no valid contact block"
+            jq -e '.contact == null or (.contact | tostring | test("sent") | not)' edge.json > /dev/null
+          fi
+          rm -f edge.json
           echo "### Live checks passed for $url" >> "$GITHUB_STEP_SUMMARY"

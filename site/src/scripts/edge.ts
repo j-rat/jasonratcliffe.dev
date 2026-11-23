@@ -11,6 +11,15 @@ const NON_FILE_CATEGORIES = new Set(['vulnerability-scanning', 'exploit-attempts
 interface Mitre { id: string; name: string }
 interface Category { id: string; label: string; tactic: string; mitre: Mitre[]; count: number; statuses: Record<string, number> }
 interface Day { date: string; requests: number; probes: number }
+export const CONTACT_KEYS = ['honeypot', 'bypass', 'cross_origin', 'invalid', 'throttled', 'wrong_route'] as const;
+type ContactKey = (typeof CONTACT_KEYS)[number];
+type ContactCounts = Record<ContactKey, number>;
+export interface ContactStats {
+  days: number;
+  totals: ContactCounts;
+  invalid_reasons: { reason: string; count: number }[];
+  daily: ({ date: string } & ContactCounts)[];
+}
 export interface EdgeReport {
   version: 1;
   generated_at: string;
@@ -22,6 +31,7 @@ export interface EdgeReport {
   scanner_families: { family: string; count: number }[];
   countries: { code: string; count: number }[];
   daily: Day[];
+  contact?: ContactStats | null;
 }
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
@@ -32,6 +42,17 @@ export function isReport(d: any): d is EdgeReport {
     && d.totals && isNum(d.totals.requests) && isNum(d.totals.probes)
     && Array.isArray(d.categories) && d.categories.every((c: any) => isStr(c.id) && isStr(c.label) && isNum(c.count) && Array.isArray(c.mitre))
     && Array.isArray(d.top_paths) && Array.isArray(d.scanner_families) && Array.isArray(d.countries) && Array.isArray(d.daily);
+}
+
+const isCounts = (c: any): c is ContactCounts => !!c && CONTACT_KEYS.every((k) => isNum(c[k]));
+
+/** The contact block, or null if it's missing or malformed (the page then hides the section). */
+export function contactStats(r: EdgeReport): ContactStats | null {
+  const c: any = r.contact;
+  if (!c || !isNum(c.days) || !isCounts(c.totals) || !Array.isArray(c.daily) || !Array.isArray(c.invalid_reasons)) return null;
+  const daily = c.daily.filter((d: any) => d && isStr(d.date) && /^\d{4}-\d{2}-\d{2}$/.test(d.date) && isCounts(d));
+  const invalid_reasons = c.invalid_reasons.filter((x: any) => x && isStr(x.reason) && isNum(x.count));
+  return { days: c.days, totals: c.totals, daily, invalid_reasons };
 }
 
 export async function loadReport(): Promise<EdgeReport | null> {
@@ -201,6 +222,72 @@ function renderBars(host: HTMLElement, items: { label: string; count: number }[]
   }
 }
 
+// Chart series: 4 categorical slots (validated for CVD on the site's dark surface), fixed order.
+const CONTACT_SERIES: { cls: string; label: string; keys: ContactKey[] }[] = [
+  { cls: 's1', label: 'Honeypot', keys: ['honeypot'] },
+  { cls: 's2', label: 'Origin blocked', keys: ['bypass', 'cross_origin'] },
+  { cls: 's3', label: 'Throttled', keys: ['throttled'] },
+  { cls: 's4', label: 'Rejected input', keys: ['invalid', 'wrong_route'] },
+];
+
+function renderContactChart(host: HTMLElement, c: ContactStats) {
+  host.replaceChildren();
+  const days = c.daily.slice(-30);
+  const sum = (d: ContactCounts, keys: ContactKey[]) => keys.reduce((s, k) => s + d[k], 0);
+  const totals = days.map((d) => CONTACT_SERIES.reduce((s, x) => s + sum(d, x.keys), 0));
+  const all = totals.reduce((a, b) => a + b, 0);
+  if (!days.length || !all) {
+    host.append(el('p', 'empty', `No blocked contact-form traffic in the last ${c.days} days.`));
+    return;
+  }
+  const W = 600, H = 140, gap = 2;
+  const max = Math.max(1, ...totals);
+  const bw = (W - gap * (days.length - 1)) / days.length;
+  const chart = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
+  chart.setAttribute('aria-label', `${fmt(all)} blocked contact-form requests over ${days.length} days: `
+    + CONTACT_SERIES.map((x) => `${x.label} ${fmt(days.reduce((s, d) => s + sum(d, x.keys), 0))}`).join(', ') + '.');
+  days.forEach((d, i) => {
+    const x = i * (bw + gap);
+    let y = H;
+    const tipText = `${d.date}: ` + CONTACT_SERIES.map((s) => `${s.label} ${fmt(sum(d, s.keys))}`).join(' · ');
+    for (const s of CONTACT_SERIES) {
+      const v = sum(d, s.keys);
+      if (!v) continue;
+      const h = Math.max(2, (v / max) * (H - 8)); // headroom for the 2px minimums
+      y -= h;
+      const seg = svg('rect', { class: s.cls, x, y, width: bw, height: Math.max(1, h - gap) });
+      const tip = svg('title', {});
+      tip.textContent = tipText;
+      seg.append(tip);
+      chart.append(seg);
+    }
+  });
+  const axis = el('p', 'axis-row');
+  axis.append(el('span', undefined, days[0].date), el('span', undefined, days[days.length - 1].date));
+  const legend = el('p', 'legend-row');
+  for (const s of CONTACT_SERIES) {
+    const item = el('span');
+    item.append(el('span', `swatch ${s.cls}`), s.label);
+    legend.append(item);
+  }
+  host.append(chart, axis, legend);
+}
+
+function renderContact(root: HTMLElement, r: EdgeReport) {
+  const section = root.querySelector<HTMLElement>('[data-contact-section]');
+  if (!section) return;
+  const c = contactStats(r);
+  section.hidden = !c;
+  if (!c) return;
+  for (const k of CONTACT_KEYS) {
+    const d = section.querySelector(`[data-c="${k}"]`);
+    if (d) d.textContent = fmt(c.totals[k]);
+  }
+  renderContactChart(section.querySelector('[data-contact-trend]')!, c);
+  renderBars(section.querySelector('[data-contact-reasons]')!, c.invalid_reasons.map((x) => ({ label: x.reason, count: x.count })),
+    `No rejected input in the last ${c.days} days.`);
+}
+
 function countryName(code: string): string {
   if (!/^[A-Z]{2}$/.test(code)) return 'Unknown';
   try {
@@ -227,6 +314,7 @@ export function render(root: HTMLElement, r: EdgeReport) {
   renderPaths(root.querySelector('[data-edge-paths]')!, r);
   renderBars(root.querySelector('[data-edge-families]')!, r.scanner_families.filter((f) => isStr(f.family) && isNum(f.count)).map((f) => ({ label: f.family, count: f.count })), 'No probes in the last 24 hours.');
   renderBars(root.querySelector('[data-edge-countries]')!, r.countries.filter((c) => isStr(c.code) && isNum(c.count)).map((c) => ({ label: countryName(c.code), count: c.count })), 'No probes in the last 24 hours.');
+  renderContact(root, r);
 }
 
 export async function initEdge() {

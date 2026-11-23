@@ -59,6 +59,10 @@
   {
    "item": "Edge threat dashboard (/edge/): daily summary of CloudFront access logs showing enumeration and secret-leakage probes by category, mapped to MITRE ATT&CK, with the status codes returned, top probed paths, scanner families, countries and a 30-day trend",
    "accept": "Request /.env on the live site and get 404; after the next daily run (or a manual run of the summary Lambda), /edge/ shows the probe under T1552.001 with status 404 and a 'last updated' time under 24 hours old; data/edge-threats.json contains no IP addresses or query strings; the page loads with no CSP errors at 375px and 1366px."
+  },
+  {
+   "item": "Contact form defenses on /edge/: 30 days of honeypot catches, direct-API bypass attempts, cross-site posts, throttled requests, rejected input and wrong-route requests, as tiles, a stacked daily chart and rejection reasons",
+   "accept": "POST to /api/contact through the site with the hidden website field filled: the response is 200 and no email arrives; after the next report run, /edge/ shows the Honeypot catches tile increased by 1; data/edge-threats.json has a contact block with counts only and no 'sent' count; the deploy smoke test's post is not counted; the section renders with no CSP errors at 375px and 1366px."
   }
  ],
  "nice_to_have": [
@@ -69,7 +73,7 @@
  ],
  "out_of_scope": [
   "Publishing personal contact details (they are a reject_if line)",
-  "Visitor analytics or tracking (cookies, third-party scripts, per-visitor profiles); aggregate edge security telemetry (M13) is in scope",
+  "Visitor analytics or tracking (cookies, third-party scripts, per-visitor profiles); aggregate edge security telemetry (M13, M14) is in scope",
   "A CMS or admin login for the blog",
   "A hosted inbox such as Workspace or Fastmail",
   "A paid web application firewall subscription",
@@ -141,7 +145,8 @@
   "A recruiter has to use the terminal to find the resume",
   "Any resume fact on the site differs from the .docx (title, dates, certs, awards, numbers)",
   "The origin S3 bucket is publicly readable",
-  "The edge dashboard publishes a viewer IP address, a full query string or a path that didn't match a probe pattern"
+  "The edge dashboard publishes a viewer IP address, a full query string or a path that didn't match a probe pattern",
+  "The edge dashboard publishes the number of real contact messages, or any name, email address or message text from the contact form"
  ],
  "open_risks": [
   "DNS cutover depends on Jason updating nameservers in Squarespace; propagation can take up to 48 hours and will break any existing Squarespace site on the domain",

@@ -7,7 +7,7 @@ with no AWS keys stored anywhere.
 **Features:** a classic resume page, a redacted PDF built from the same data, a terminal overlay (press
 <kbd>&#96;</kbd>), an architecture page, a STRIDE threat model of the career, a Markdown blog, an ASCII
 edge-filter animation, and a daily edge-telemetry dashboard (`/edge/`) that maps probes against the site to
-MITRE ATT&CK.
+MITRE ATT&CK and charts what the contact form's honeypot and API defenses blocked.
 
 ```text
 site/             Astro site (content lives in site/src/data/resume.ts)

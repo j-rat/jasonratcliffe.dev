@@ -58,6 +58,8 @@ there's no CORS and no extra origin in the CSP.
 - **Origin secret**: CloudFront adds a random header to every API request, and the Lambda rejects requests
   without it. Finding the `execute-api` URL doesn't let anyone bypass the edge.
 - **Honeypot**: there's a hidden field that only bots fill in. They get a cheerful `200`, and no email is sent.
+  Every catch, along with direct-API bypass attempts, throttling and rejected input, is counted on the
+  [edge telemetry](/edge/) page. Only counts are logged; real messages are never counted publicly.
 - **Header injection**: CR/LF characters are stripped from anything that ends up in a mail header, and the
   reply-to address is validated.
 - **Least privilege**: the function's role can call `ses:SendEmail` only on the site's identities, and only

@@ -4,7 +4,7 @@ import {
   profile, summary, roles, earlierTitles, certifications, skills, projects, awards, education, training,
 } from '../data/resume';
 import { stride } from '../data/threat-model';
-import { loadReport, leaks } from './edge';
+import { loadReport, leaks, contactStats } from './edge';
 
 type Part = string | { text: string; cls?: string; href?: string };
 type Line = Part[] | string;
@@ -156,7 +156,7 @@ export function initTerminal(): void {
       },
     },
     edge: {
-      help: 'probes seen at the edge in the last 24h, by ATT&CK technique',
+      help: 'probes seen at the edge (24h, by ATT&CK technique) + contact form defenses',
       run: async () => {
         const r = await loadReport();
         if (!r) {
@@ -165,6 +165,8 @@ export function initTerminal(): void {
           print([{ text: 'requests'.padEnd(12), cls: 'acc' }, `${r.totals.requests}`, { text: '   probes ', cls: 'acc' }, `${r.totals.probes}`]);
           [...r.categories].filter((c) => c.count).sort((a, b) => b.count - a.count).slice(0, 3).forEach((c) =>
             print([{ text: `${c.mitre.map((m) => m.id).join('/')}`.padEnd(18), cls: 'acc' }, `${c.label} `, { text: `× ${c.count}`, cls: 'dim' }]));
+          const c = contactStats(r);
+          if (c) print([{ text: `contact (${c.days}d)`.padEnd(12), cls: 'acc' }, `honeypot ${c.totals.honeypot} · bypass ${c.totals.bypass} · throttled ${c.totals.throttled} · rejected ${c.totals.invalid}`]);
           const exposed = leaks(r);
           print(exposed.length
             ? [{ text: `ALERT: 200 returned for ${exposed.join(', ')}`, cls: 'err' }]

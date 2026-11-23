@@ -21,7 +21,7 @@ credentials.
 | [10](#part-10--troubleshooting) | Troubleshooting | — | — |
 | [11](#part-11--optional-hardening) | Optional hardening | — | — |
 | [12](#part-12--tear-down) | Tear down | — | — |
-| [13](#part-13--edge-telemetry-dashboard) | Edge telemetry dashboard: how it works, upgrades, patterns | — | — |
+| [13](#part-13--edge-telemetry-dashboard) | Edge telemetry dashboard: probes, contact form defenses, upgrades, patterns | — | — |
 
 ---
 
@@ -692,22 +692,27 @@ almost never need this. If you do, download the older `main/terraform.tfstate` v
 ## Part 13 – Edge telemetry dashboard
 
 `/edge/` shows probes against the site from the last 24 hours, mapped to MITRE ATT&CK, plus a 30-day
-trend. It refreshes daily.
+trend and 30 days of contact form defenses (honeypot catches, direct-API bypass, cross-site posts,
+throttling, rejected input). It refreshes daily.
 
 ```text
 CloudFront access logs ──▶ CloudWatch Logs /aws/vendedlogs/resume-site-cloudfront (30 days)
    (no viewer IP, X-Forwarded-For or cookies: excluded in the log delivery's record_fields)
+Contact Lambda outcome logs ──▶ CloudWatch Logs /aws/lambda/resume-site-contact (30 days, no personal data)
 EventBridge rule resume-site-edge-report-daily (00:15 UTC) ──▶ Lambda resume-site-edge-report
    Logs Insights query → categories from infra/main/lambda/edge_report/patterns.json
+   + contact-log and /api/* queries → contact defense counts
    ──▶ s3://<site-bucket>/data/edge-threats.json (max-age 300) ──▶ /edge/ fetches it
 ```
 
-- **Permissions.** The Lambda's role can run `logs:StartQuery` on the CloudFront log group and write
-  exactly one object, `data/edge-threats.json`. The workload boundary caps it at `/aws/vendedlogs/resume-site-*`
-  and `data/*`.
+- **Permissions.** The Lambda's role can run `logs:StartQuery` on the CloudFront and contact log groups and
+  write exactly one object, `data/edge-threats.json`. The workload boundary caps it at `/aws/vendedlogs/resume-site-*`,
+  `/aws/lambda/resume-site-contact` and `data/*`.
 - **Privacy.** IPs are never logged. The published JSON never contains query strings or paths that
   didn't match a pattern. Matched paths are shortened to 80 characters, emails are redacted, and
-  characters like `<` are percent-encoded. The page renders everything as text.
+  characters like `<` are percent-encoded. The page renders everything as text. Contact stats are counts
+  only: the number of real messages sent is never published, and the deploy smoke test's post is logged as
+  `smoke-test` and left out.
 - **Deploys don't touch the data.** The `--delete` sync excludes `data/*`. Keep that exclude, or every
   deploy erases the dashboard.
 - **Cost.** Well under $1 a month at personal-site traffic.
@@ -723,6 +728,17 @@ make bootstrap-apply
 ```
 
 Then merge and approve the deploy as usual. It adds 11 resources to the main stack.
+
+**Contact form defenses (added later).** The boundary's `EdgeReportQuery` statement gained the contact
+log group. Apply bootstrap first, or the report publishes without the contact section (`contact: null`)
+until you do:
+
+```bash
+make bootstrap-plan    # expect: 0 to add, 1 to change (the boundary policy), 0 to destroy
+make bootstrap-apply
+```
+
+The main stack then changes 2 resources in place (the report role policy and the function's environment).
 
 ### 13.2 Adding or changing a probe pattern
 
@@ -740,3 +756,6 @@ Then merge and approve the deploy as usual. It adds 11 resources to the main sta
 - **Daily refresh may have failed, yellow:** the data is more than 36 hours old (part 10).
 - **HTTP 200 under "Vulnerability scanner traffic" or "Exploit attempts"** is expected: scanners also
   request real pages like `/`.
+- **Contact form defenses missing:** the report's `contact` block is `null`, usually because bootstrap
+  wasn't re-applied (13.1). Check the report Lambda's log for `contact-stats-failed`.
+- **Honeypot catches:** bots that filled the hidden field. They were told the message was sent; nothing was.

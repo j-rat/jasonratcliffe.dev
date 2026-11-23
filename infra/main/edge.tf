@@ -72,11 +72,13 @@ data "aws_iam_policy_document" "edge_report" {
   }
 
   statement {
-    sid     = "QueryAccessLogs"
+    sid     = "QueryAccessAndContactLogs"
     actions = ["logs:StartQuery"]
     resources = [
       aws_cloudwatch_log_group.edge_access.arn,
       "${aws_cloudwatch_log_group.edge_access.arn}:*",
+      aws_cloudwatch_log_group.contact.arn, # outcome events only: the handler never logs names, addresses or messages
+      "${aws_cloudwatch_log_group.contact.arn}:*",
     ]
   }
 
@@ -117,6 +119,8 @@ resource "aws_lambda_function" "edge_report" {
       BUCKET     = aws_s3_bucket.origin.id
       OBJECT_KEY = "data/edge-threats.json"
       SITE_HOST  = var.domain_name
+      # Contact form defense counts (honeypot, rejected, invalid) for /edge/.
+      CONTACT_LOG_GROUP = aws_cloudwatch_log_group.contact.name
     }
   }
 

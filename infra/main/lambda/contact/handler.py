@@ -5,7 +5,8 @@ Security properties:
   * Rejects cross-site POSTs (Origin must be the site when present).
   * Honeypot field: bots that fill it get a fake success and no email is sent.
   * Strict length/format validation; CR/LF stripped from anything used in headers.
-  * Logs outcomes only - never names, addresses or message bodies.
+  * Logs outcomes only - never names, addresses or message bodies. The edge report counts these
+    events (honeypot, rejected, invalid) for the public /edge/ page; "sent" is never published.
 """
 
 import base64
@@ -19,6 +20,8 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 MAX_BODY_BYTES = 10_000
+# The deploy smoke test posts exactly this body; it's logged separately so it doesn't count as abuse.
+SMOKE_TEST = {"smoke_test": True}
 EMAIL_RE = re.compile(r"^[^@\s<>\"',;]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,63}$")
 LIMITS = {"name": (1, 100), "reply_to": (3, 254), "message": (10, 4000)}
 
@@ -92,7 +95,12 @@ def lambda_handler(event, context):
     try:
         data = _parse(event)
     except (ValueError, UnicodeDecodeError):
+        logger.info(json.dumps({"event": "invalid", "reason": "malformed", "request_id": request_id}))
         return _response(400, {"ok": False, "error": "invalid request"})
+
+    if data == SMOKE_TEST:
+        logger.info(json.dumps({"event": "smoke-test", "request_id": request_id}))
+        return _response(400, {"ok": False, "error": "invalid fields"})
 
     if str(data.get("website") or "").strip():
         logger.info(json.dumps({"event": "honeypot", "request_id": request_id}))

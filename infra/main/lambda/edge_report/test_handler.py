@@ -225,6 +225,78 @@ class TrendTests(unittest.TestCase):
             self.assertEqual(handler.fetch_previous("example.test"), [])
 
 
+class ContactLogs(FakeLogs):
+    """Answers the contact-log and /api/* queries with fixed rows; everything else as FakeLogs."""
+
+    def __init__(self, contact_rows, api_rows, fail_contact=False):
+        super().__init__([])
+        self.contact_rows, self.api_rows, self.fail_contact = contact_rows, api_rows, fail_contact
+
+    def start_query(self, **kw):
+        if self.fail_contact and kw["queryString"] == handler.CONTACT_QUERY:
+            raise RuntimeError("AccessDenied")
+        return super().start_query(**kw)
+
+    def get_query_results(self, queryId):
+        q = self.queries[int(queryId) - 1]["queryString"]
+        rows = self.contact_rows if q == handler.CONTACT_QUERY else self.api_rows if q == handler.API_QUERY else None
+        if rows is None:
+            return super().get_query_results(queryId)
+        return {"status": "Complete", "results": [[{"field": k, "value": v} for k, v in r.items()] for r in rows]}
+
+
+def crow(ev, reason="-", day="2026-11-23", n=1):
+    return {"ev": ev, "reason": reason, "day": f"{day} 00:00:00.000", "n": str(n)}
+
+
+class ContactTests(unittest.TestCase):
+    PREVIOUS = [{"date": (NOW.date() - dt.timedelta(days=i)).isoformat(), "requests": 0, "probes": 0, "by_category": {}, "truncated": False}
+                for i in range(1, 31)]
+
+    def contact(self, contact_rows, api_rows=(), **kw):
+        logs = ContactLogs(contact_rows, list(api_rows), **kw)
+        return handler.build_report(logs, "access", NOW, self.PREVIOUS, contact_group="contact")["contact"]
+
+    def test_counts_defenses_by_day(self):
+        c = self.contact(
+            [crow("honeypot", n=3), crow("honeypot", day="2026-11-20"), crow("rejected", "origin-secret", n=2),
+             crow("rejected", "cross-origin"), crow("invalid", "name missing", n=4), crow("invalid", "malformed")],
+            [{"status": "429", "day": "2026-11-23 00:00:00.000", "n": "6"}, {"status": "404", "day": "2026-11-22 00:00:00.000", "n": "2"},
+             {"status": "400", "day": "2026-11-23 00:00:00.000", "n": "9"}, {"status": "200", "day": "2026-11-23 00:00:00.000", "n": "5"}],
+        )
+        self.assertEqual(c["totals"], {"honeypot": 4, "bypass": 2, "cross_origin": 1, "invalid": 5, "throttled": 6, "wrong_route": 2})
+        self.assertEqual(c["invalid_reasons"], [{"reason": "name missing", "count": 4}, {"reason": "malformed", "count": 1}])
+        self.assertEqual(len(c["daily"]), handler.TREND_DAYS)
+        self.assertEqual((c["daily"][0]["date"], c["daily"][-1]["date"]), ("2026-10-25", "2026-11-23"))
+        self.assertEqual(c["daily"][-1]["honeypot"], 3)
+        self.assertEqual(c["daily"][-4]["honeypot"], 1)
+
+    def test_real_messages_and_smoke_tests_are_never_published(self):
+        c = self.contact([crow("sent", n=7), crow("send-failed"), crow("smoke-test", n=3), crow("mystery")])
+        self.assertEqual(set(c["totals"].values()), {0})
+        text = json.dumps(c)
+        self.assertNotIn("sent", text)
+        self.assertNotIn("smoke", text)
+
+    def test_unexpected_reason_text_is_not_published(self):
+        c = self.contact([crow("invalid", "<script>alert(1)</script>"), crow("invalid", "x" * 200 + " missing")])
+        self.assertEqual(c["invalid_reasons"], [{"reason": "other", "count": 2}])
+
+    def test_rows_outside_the_window_are_ignored(self):
+        c = self.contact([crow("honeypot", day="2026-09-01"), crow("honeypot", day="garbage"), {"ev": "honeypot", "n": "x"}])
+        self.assertEqual(c["totals"]["honeypot"], 0)
+
+    def test_contact_failure_keeps_the_probe_report(self):
+        logs = ContactLogs([], [], fail_contact=True)
+        with mock.patch("builtins.print"):
+            rep = handler.build_report(logs, "access", NOW, self.PREVIOUS, contact_group="contact")
+        self.assertIsNone(rep["contact"])
+        self.assertEqual(rep["version"], 1)
+
+    def test_no_contact_group_means_no_section(self):
+        self.assertIsNone(report([])["contact"])
+
+
 class QueryAndHandlerTests(unittest.TestCase):
     def test_polls_until_complete(self):
         logs = FakeLogs([row("/.env")], pending=2)

@@ -3,8 +3,12 @@
 Queries the CloudFront access logs (CloudWatch Logs Insights), sorts probe traffic into categories
 mapped to MITRE ATT&CK (patterns.json) and publishes data/edge-threats.json to the site bucket.
 
-Never published: viewer IPs (not even logged), query strings, and any path that didn't match a probe
-pattern. Published paths have emails redacted, unsafe characters percent-encoded and are truncated.
+Also counts the contact form's defenses over 30 days (honeypot catches, rejected origins, bad input from
+the contact Lambda's outcome logs; throttling and wrong routes from the access logs).
+
+Never published: viewer IPs (not even logged), query strings, any path that didn't match a probe
+pattern, and the number of real messages sent. Published paths have emails redacted, unsafe characters
+percent-encoded and are truncated.
 """
 
 import datetime as dt
@@ -23,6 +27,22 @@ QUERY = (
     "`cs(User-Agent)` as ua, `c-country` as country "
     "| stats count(*) as n by path, query, status, ua, country"
 )
+# The contact Lambda logs JSON inside Lambda's JSON envelope, so the outcome is parsed out of `message`.
+CONTACT_QUERY = (
+    'fields @timestamp | filter message like /"request_id"/ '
+    '| parse message /"event": "(?<ev>[a-z-]+)"/ '
+    '| parse message /"reason": "(?<rs>[^"]+)"/ '
+    '| fields coalesce(rs, "-") as reason '
+    "| filter ispresent(ev) "
+    "| stats count(*) as n by ev, reason, datefloor(@timestamp, 1d) as day"
+)
+API_QUERY = (
+    "filter `cs-uri-stem` like /^\\/api\\// "
+    "| stats count(*) as n by `sc-status` as status, datefloor(@timestamp, 1d) as day"
+)
+# Published contact counters. "sent", "send-failed" and "smoke-test" are deliberately absent.
+CONTACT_KEYS = ("honeypot", "bypass", "cross_origin", "invalid", "throttled", "wrong_route")
+REASON = re.compile(r"^(malformed|[a-z_]{1,20} (missing|length|format))$")
 ROW_LIMIT = 10_000
 TREND_DAYS = 30
 BACKFILL_PER_RUN = 7
@@ -130,12 +150,12 @@ def summarize(rows):
     return s
 
 
-def run_query(logs, group, start, end):
+def run_query(logs, group, start, end, query=QUERY):
     qid = logs.start_query(
         logGroupName=group,
         startTime=int(start.timestamp()),
         endTime=int(end.timestamp()),
-        queryString=QUERY,
+        queryString=query,
         limit=ROW_LIMIT,
     )["queryId"]
     deadline = time.monotonic() + QUERY_TIMEOUT_S
@@ -170,6 +190,56 @@ def fetch_previous(host):
         return []
 
 
+def contact_key(ev, reason):
+    if ev == "honeypot":
+        return "honeypot"
+    if ev == "rejected":
+        return {"origin-secret": "bypass", "cross-origin": "cross_origin"}.get(reason)
+    if ev == "invalid":
+        return "invalid"
+    return None  # sent, send-failed, smoke-test, anything unknown: never published
+
+
+def build_contact(logs, contact_group, access_group, now):
+    """30-day counts of the contact form's defenses, one entry per UTC day, oldest first."""
+    today = now.date()
+    days = [today - dt.timedelta(days=i) for i in range(TREND_DAYS - 1, -1, -1)]
+    daily = {d.isoformat(): dict.fromkeys(CONTACT_KEYS, 0) for d in days}
+    start = dt.datetime.combine(days[0], dt.time.min, tzinfo=dt.timezone.utc)
+    reasons = Counter()
+
+    rows, _ = run_query(logs, contact_group, start, now, CONTACT_QUERY)
+    for r in rows:
+        day, key = r.get("day", "")[:10], contact_key(r.get("ev"), r.get("reason"))
+        try:
+            n = int(r.get("n", "0"))
+        except ValueError:
+            continue
+        if key and day in daily:
+            daily[day][key] += n
+            if key == "invalid":
+                reason = r.get("reason", "")
+                reasons[reason if REASON.match(reason) else "other"] += n
+
+    rows, _ = run_query(logs, access_group, start, now, API_QUERY)
+    for r in rows:
+        day, status = r.get("day", "")[:10], r.get("status", "")
+        key = "throttled" if status == "429" else "wrong_route" if status in ("404", "405") else None
+        try:
+            n = int(r.get("n", "0"))
+        except ValueError:
+            continue
+        if key and day in daily:
+            daily[day][key] += n
+
+    return {
+        "days": TREND_DAYS,
+        "totals": {k: sum(d[k] for d in daily.values()) for k in CONTACT_KEYS},
+        "invalid_reasons": [{"reason": k, "count": n} for k, n in reasons.most_common()],
+        "daily": [{"date": k, **v} for k, v in daily.items()],
+    }
+
+
 def day_entry(date, s, truncated):
     return {
         "date": date.isoformat(),
@@ -180,7 +250,7 @@ def day_entry(date, s, truncated):
     }
 
 
-def build_report(logs, group, now, previous_daily, time_left_ms=lambda: 10**9):
+def build_report(logs, group, now, previous_daily, time_left_ms=lambda: 10**9, contact_group=None):
     start = now - dt.timedelta(hours=24)
     rows, truncated = run_query(logs, group, start, now)
     s = summarize(rows)
@@ -204,6 +274,13 @@ def build_report(logs, group, now, previous_daily, time_left_ms=lambda: 10**9):
             raise
         daily[day.isoformat()] = day_entry(day, summarize(drows), dtrunc)
 
+    contact = None
+    if contact_group:
+        try:
+            contact = build_contact(logs, contact_group, group, now)
+        except Exception as e:  # noqa: BLE001 - the probe report still publishes; the page hides the section
+            print(json.dumps({"outcome": "contact-stats-failed", "error": type(e).__name__}))
+
     categories = []
     for c in CATEGORIES:
         categories.append({
@@ -225,6 +302,7 @@ def build_report(logs, group, now, previous_daily, time_left_ms=lambda: 10**9):
         "scanner_families": [{"family": f, "count": n} for f, n in s["families"].most_common()],
         "countries": [{"code": c, "count": n} for c, n in s["countries"].most_common(TOP_COUNTRIES)],
         "daily": [daily[k] for k in sorted(daily)],
+        "contact": contact,
     }
 
 
@@ -238,7 +316,8 @@ def lambda_handler(event, context):
 
     now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
     time_left = getattr(context, "get_remaining_time_in_millis", lambda: 10**9)
-    report = build_report(_logs, os.environ["LOG_GROUP"], now, fetch_previous(os.environ["SITE_HOST"]), time_left)
+    report = build_report(_logs, os.environ["LOG_GROUP"], now, fetch_previous(os.environ["SITE_HOST"]), time_left,
+                          contact_group=os.environ.get("CONTACT_LOG_GROUP"))
     _s3.put_object(
         Bucket=os.environ["BUCKET"],
         Key=os.environ["OBJECT_KEY"],

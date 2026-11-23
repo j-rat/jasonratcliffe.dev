@@ -132,7 +132,8 @@ data "aws_iam_policy_document" "workload_boundary" {
     actions   = ["ses:SendEmail", "ses:SendRawEmail"]
     resources = ["arn:${local.partition}:ses:${local.region_account}:identity/*"]
   }
-  # Edge report Lambda: query the CloudFront access logs, publish the summary under data/.
+  # Edge report Lambda: query the CloudFront access logs and the contact Lambda's outcome logs,
+  # publish the summary under data/.
   # (The policy description below is left unchanged on purpose: editing it forces a replace, which fails while roles use the boundary.)
   statement {
     sid     = "EdgeReportQuery"
@@ -140,6 +141,8 @@ data "aws_iam_policy_document" "workload_boundary" {
     resources = [
       "arn:${local.partition}:logs:${local.region_account}:log-group:/aws/vendedlogs/${local.workload_prefix}-*",
       "arn:${local.partition}:logs:${local.region_account}:log-group:/aws/vendedlogs/${local.workload_prefix}-*:*",
+      "arn:${local.partition}:logs:${local.region_account}:log-group:/aws/lambda/${local.workload_prefix}-contact",
+      "arn:${local.partition}:logs:${local.region_account}:log-group:/aws/lambda/${local.workload_prefix}-contact:*",
     ]
   }
   statement {
