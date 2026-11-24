@@ -1,0 +1,144 @@
+/* JWT lab on the OIDC/JWT blog post (src/scripts/jwt-lab.ts). Global, scoped under .jwt-lab,
+   because the elements are created by script and don't get Astro's scoped attributes. */
+.jwt-lab { margin: 1.6em 0; padding: 18px; display: grid; gap: 16px; }
+.jwt-lab .jl-form { display: grid; gap: 14px; }
+.jwt-lab .jl-grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 640px) { .jwt-lab .jl-grid { grid-template-columns: 1fr 1fr; } }
+.jwt-lab [hidden] { display: none !important; }
+.jwt-lab .jl-field { display: grid; gap: 5px; min-width: 0; }
+.jwt-lab .jl-label { font: 600 0.8rem var(--mono); }
+.jwt-lab .jl-hint { font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; margin: 0; }
+.jwt-lab input, .jwt-lab select {
+  width: 100%; font: 0.9rem var(--mono); color: var(--text); background: var(--bg-sunken);
+  border: 1px solid var(--line-strong); border-radius: 8px; padding: 9px 10px; min-width: 0;
+}
+.jwt-lab input:focus, .jwt-lab select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.jwt-lab .jl-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.jwt-lab .jl-out { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
+.jwt-lab .jl-token {
+  margin: 0; padding: 12px 14px; background: var(--bg-sunken); border: 1px solid var(--line); border-radius: 8px;
+  font-size: 0.82rem; line-height: 1.5; overflow-wrap: anywhere; word-break: break-all;
+}
+/* Header / payload / signature colors match the decoded panels' headings. */
+.jwt-lab .head { color: #f87171; }
+.jwt-lab .pay { color: #c084fc; }
+.jwt-lab .sig { color: #38bdf8; }
+.jwt-lab .jl-h { margin: 6px 0 4px; font: 700 0.85rem var(--mono); }
+.jwt-lab .jl-decoded { display: grid; gap: 12px; grid-template-columns: 1fr; }
+@media (min-width: 640px) { .jwt-lab .jl-decoded { grid-template-columns: 1fr 1.4fr; } }
+.jwt-lab .jl-decoded > div { min-width: 0; }
+.jwt-lab pre.jl-json {
+  margin: 0; padding: 10px 12px; background: var(--bg-sunken); border: 1px solid var(--line); border-radius: 8px;
+  font: 0.78rem/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto;
+}
+.jwt-lab .jl-status { margin: 0; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); font-size: 0.88rem; }
+.jwt-lab .jl-status[data-state='ok'] { color: var(--ok); border-color: var(--ok); }
+.jwt-lab .jl-status[data-state='bad'] { color: var(--danger); border-color: var(--danger); }
+.jwt-lab .jl-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 0.9rem; }
+.jwt-lab .jl-checks li { display: flex; gap: 8px; align-items: baseline; margin: 0; }
+.jwt-lab .jl-checks .mark { font: 700 0.9rem var(--mono); flex: none; }
+.jwt-lab .jl-checks .ok .mark { color: var(--ok); }
+.jwt-lab .jl-checks .bad .mark { color: var(--danger); }
+.jwt-lab .jl-checks .bad { color: var(--text); }
+.jwt-lab .jl-noscript { margin: 0; color: var(--text-muted); }
+.jwt-lab .jl-decoder { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 16px; }
+.jwt-lab .jl-decoder > .jl-h { font-size: 1rem; margin: 0; }
+.jwt-lab .jl-dz-view { display: grid; gap: 10px; }
+.jwt-lab .jl-textarea {
+  width: 100%; font: 0.82rem/1.5 var(--mono); color: var(--text); background: var(--bg-sunken);
+  border: 1px solid var(--line-strong); border-radius: 8px; padding: 9px 10px; resize: vertical; word-break: break-all;
+}
+.jwt-lab .jl-textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.jwt-lab .jl-error { margin: 0; color: var(--warn); font-size: 0.88rem; }
+.jwt-lab .jl-status[data-state='warn'] { color: var(--warn); border-color: var(--warn); }
+.jwt-lab .jl-status:empty { display: none; }
+.jwt-lab .jl-table-wrap { overflow-x: auto; }
+.jwt-lab .jl-claims { border-collapse: collapse; width: 100%; font-size: 0.84rem; display: table; }
+.jwt-lab .jl-claims th, .jwt-lab .jl-claims td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+.jwt-lab .jl-claims td.mono { font-family: var(--mono); font-size: 0.8rem; overflow-wrap: anywhere; }
+.jwt-lab .jl-claims td:last-child { color: var(--text-muted); }
+
+/* Animated OIDC flow (src/scripts/auth-flow.ts). */
+.auth-flow { margin: 1.6em 0; padding: 16px; display: grid; gap: 14px; }
+.auth-flow [hidden] { display: none !important; }
+.auth-flow .af-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.auth-flow .af-bar select {
+  font: 0.85rem var(--mono); color: var(--text); background: var(--bg-sunken);
+  border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 10px; max-width: 100%;
+}
+.auth-flow .af-bar .btn { padding: 7px 12px; font-size: 0.85rem; }
+.auth-flow .af-bar .btn:disabled { opacity: 0.45; cursor: default; }
+.auth-flow .af-svg { width: 100%; height: auto; display: block; }
+.auth-flow .af-actor rect { fill: var(--bg-raised); stroke: var(--line-strong); stroke-width: 1.5; transition: stroke 0.3s, fill 0.3s; }
+.auth-flow .af-actor.active rect { stroke: var(--accent); fill: rgba(45, 212, 191, 0.08); }
+.auth-flow .af-life { stroke: var(--line-strong); stroke-width: 1.5; stroke-dasharray: 4 5; }
+.auth-flow .af-name { fill: var(--text); font: 700 20px var(--mono); text-anchor: middle; }
+.auth-flow .af-sub { fill: var(--text-muted); font: 13px var(--mono); text-anchor: middle; }
+.auth-flow .af-msg { stroke: var(--accent); stroke-width: 2.2; }
+.auth-flow .af-msg.fail { stroke: var(--danger); }
+.auth-flow .af-head { fill: var(--accent); }
+.auth-flow .af-head.fail { fill: var(--danger); }
+.auth-flow .af-packet rect, .auth-flow .af-self rect { fill: #0f2a2a; stroke: var(--accent); stroke-width: 1.6; }
+.auth-flow .af-packet.ok rect, .auth-flow .af-self.ok rect { fill: #0f2a1a; stroke: var(--ok); }
+.auth-flow .af-packet.fail rect, .auth-flow .af-self.fail rect { fill: #2a1416; stroke: var(--danger); }
+.auth-flow .af-packet-text { fill: var(--text); font: 700 17px var(--mono); text-anchor: middle; }
+.auth-flow .af-panel { min-height: 9.5em; }
+.auth-flow .af-meta { margin: 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
+.auth-flow .af-meta[data-phase='authorization'] { color: #c084fc; }
+.auth-flow .af-meta[data-phase='setup'] { color: var(--text-muted); }
+.auth-flow .af-title { margin: 4px 0 6px; font-size: 1.02rem; }
+.auth-flow .af-body { margin: 0 0 8px; color: var(--text-muted); font-size: 0.94rem; }
+.auth-flow .af-detail {
+  margin: 0; padding: 10px 12px; background: var(--bg-sunken); border: 1px solid var(--line); border-radius: 8px;
+  font: 0.78rem/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.auth-flow .af-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; border-top: 1px solid var(--line); padding-top: 10px; }
+.auth-flow .af-steps li { margin: 0; }
+.auth-flow .af-step {
+  width: 100%; text-align: left; background: none; border: 0; border-radius: 6px; padding: 5px 8px;
+  font: 0.84rem var(--sans); color: var(--text-muted); cursor: pointer;
+}
+.auth-flow .af-step:hover { background: var(--bg-sunken); color: var(--text); }
+.auth-flow .af-steps .done .af-step { color: var(--text); }
+.auth-flow .af-steps .current .af-step { background: var(--accent-soft); color: var(--text); font-weight: 600; }
+.auth-flow .af-steps .fail.current .af-step { background: rgba(248, 113, 113, 0.14); }
+.auth-flow .af-row { cursor: pointer; }
+.auth-flow .af-row-line { stroke: var(--accent); stroke-width: 1.8; }
+.auth-flow .af-row.fail .af-row-line { stroke: var(--danger); }
+.auth-flow .af-row-label { fill: var(--text); font: 600 14px var(--mono); text-anchor: middle; }
+.auth-flow .af-row-pill { fill: #0f2a1a; stroke: var(--ok); stroke-width: 1.4; }
+.auth-flow .af-row.fail .af-row-pill { fill: #2a1416; stroke: var(--danger); }
+.auth-flow .af-row.todo { opacity: 0.4; }
+.auth-flow .af-row.current .af-row-line { stroke-width: 3; }
+.auth-flow .af-row.current .af-row-label { fill: var(--accent-strong); font-weight: 800; }
+.auth-flow .af-row.current.fail .af-row-label { fill: var(--danger); }
+.auth-flow .af-row.current .af-row-pill { stroke-width: 2.4; }
+.auth-flow .af-row:hover { opacity: 1; }
+.auth-flow .af-row-dot { fill: var(--accent-strong); }
+/* In the full view the diagram already lists every step, so the step list is redundant. */
+.auth-flow.full .af-steps { display: none; }
+
+/* "Anatomy of a JWT" figure in the OIDC/JWT post (static HTML in the Markdown). */
+.jwt-anatomy { margin: 1.4em 0; display: grid; gap: 12px; }
+.jwt-anatomy .ja-token {
+  margin: 0; padding: 12px 14px; background: var(--bg-sunken); border: 1px solid var(--line); border-radius: 8px;
+  font-size: 0.8rem; line-height: 1.55; overflow-wrap: anywhere; word-break: break-all;
+}
+.jwt-anatomy .head { --part: #f87171; }
+.jwt-anatomy .pay { --part: #c084fc; }
+.jwt-anatomy .sig { --part: #38bdf8; }
+.jwt-anatomy .ja-token span { color: var(--part); }
+.jwt-anatomy .ja-parts { display: grid; gap: 10px; }
+.jwt-anatomy .ja-part {
+  display: grid; gap: 4px 18px; grid-template-columns: 1fr; padding: 12px 14px;
+  border: 1px solid var(--line); border-left: 4px solid var(--part); border-radius: 8px; background: var(--bg-raised);
+}
+@media (min-width: 640px) {
+  .jwt-anatomy .ja-part { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); grid-template-rows: auto 1fr; align-items: start; }
+  .jwt-anatomy .ja-part .ja-json { grid-column: 2; grid-row: 1 / span 2; }
+}
+.jwt-anatomy .ja-name { margin: 0; font: 700 0.9rem var(--mono); color: var(--part); }
+.jwt-anatomy .ja-what { margin: 0; font-size: 0.9rem; color: var(--text-muted); }
+.prose .jwt-anatomy pre.ja-json {
+  margin: 0; padding: 8px 10px; font: 0.8rem/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible;
+}
