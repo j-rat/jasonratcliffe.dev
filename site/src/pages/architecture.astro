@@ -8,9 +8,10 @@ const controls = [
   { layer: 'Headers', what: 'Response headers policy', controls: ['HSTS (2 years, includeSubDomains, preload)', 'Strict CSP: self-only scripts, no inline script, frame-ancestors none', 'nosniff, Referrer-Policy, Permissions-Policy, COOP/CORP', 'PDF served with its own headers policy (no CSP) so browser PDF viewers work'] },
   { layer: 'Origin', what: 'Private S3 bucket', controls: ['Block Public Access on, ACLs disabled (bucket owner enforced)', 'Origin Access Control: bucket policy allows only this distribution', 'SSE encryption, versioning for instant rollback, TLS-only bucket policy', 'data/ is written only by the edge report and excluded from deploy deletes'] },
   { layer: 'Contact API', what: 'HTTP API → Lambda → SES', controls: ['Same-origin route through the CDN (no CORS, no extra CSP origin)', 'Stage throttling returns 429 on bursts; honeypot drops bots', 'Every outcome is logged as a count-only event: no names, addresses or message text', 'Secret origin header so the API only answers the CDN', 'Lambda role can send only from the site domain identity; recipient never leaves the backend', 'Lambda role runs under a permissions boundary'] },
-  { layer: 'Detection', what: 'Edge telemetry', controls: ['CloudFront access logs to CloudWatch Logs, kept 7 days; the 30-day history lives in the published summary', 'A daily EventBridge schedule runs a Lambda that maps probes to MITRE ATT&CK with Logs Insights', 'Leak check flags any file probe (.env, .git, backups) that received a 200', 'Contact form defenses charted for 30 days: honeypot catches, direct-API bypass, cross-site posts, throttling, rejected input', 'The report Lambda can query only the access-log and contact-log groups and write one object', 'Results are public on /edge/: no IPs, no query strings, sanitized paths, real messages never counted', 'The private admin viewer shows sources only as /24 or /48 network prefixes, never full IPs'] },
-  { layer: 'IaC', what: 'Terraform', controls: ['Two stacks: bootstrap (state, DNS zone, OIDC roles) applied locally; main applied only by CI', 'Remote state in a dedicated S3 bucket: versioned, encrypted, public access blocked, TLS-only', 'Native S3 state locking', 'Every workload role carries a permissions boundary', 'Account-specific values kept out of git'] },
+  { layer: 'Detection', what: 'Edge telemetry', controls: ['CloudFront access logs to CloudWatch Logs, kept 7 days; the 30-day history lives in the published summary', 'A daily EventBridge schedule runs a Lambda that maps probes to MITRE ATT&CK with Logs Insights', 'Leak check flags any file probe (.env, .git, backups) that received a 200', 'Contact form defenses charted for 30 days: honeypot catches, direct-API bypass, cross-site posts, throttling, rejected input', 'The report Lambda can query only the access-log and contact-log groups and write one object', 'Results are public on /edge/: no IPs, no query strings, sanitized paths, real messages never counted'] },
+  { layer: 'IaC', what: 'Terraform', controls: ['Two stacks: bootstrap (state, DNS zone, OIDC roles) applied locally; main applied only by CI', 'Remote state in a dedicated S3 bucket: versioned, encrypted, public access blocked, TLS-only', 'Native S3 state locking', 'Every workload role carries a permissions boundary', 'Every resource tagged application = resume through provider default tags, so its cost is attributable to this site', 'Account-specific values kept out of git'] },
   { layer: 'CI/CD', what: 'GitHub Actions', controls: ['OIDC federation – no long-lived AWS keys anywhere', 'OIDC trust pinned to immutable owner and repo IDs', 'PRs assume a read-only plan role; deploys wait for manual approval in a protected environment, and only main can deploy', 'Actions pinned to commit SHAs; dependency updates verified before merge', 'Build fails if the PII scanner finds an email, phone or address', 'Live smoke tests after every deploy: headers, redirects, direct S3 = 403, security.txt, /edge/ data (tagged so they never count as abuse)'] },
+  { layer: 'Operations', what: 'Admin log viewer (local prototype)', controls: ['Runs only on the operator’s machine, bound to localhost: nothing new is reachable from the internet', 'OpenID Connect Authorization Code + PKCE; tokens stay on the server and the browser holds only an HttpOnly cookie', 'Password first, then an authenticator code; every failure says only “Authentication failed”, and repeated failures lock sign-in', 'Every request re-checks the token’s signature, issuer, audience, expiry and read-only scope', 'Fixed, named queries only: nothing the browser sends becomes query text', 'Viewer sources shown only as /24 or /48 network prefixes, never full IPs', 'AWS access uses the operator’s short-lived sign-in, never stored keys; the cost view counts only resources tagged application = resume'] },
 ];
 ---
 <Base title="Architecture" description="How jasonratcliffe.dev is hosted and secured on AWS." active="architecture">
@@ -22,7 +23,7 @@ const controls = [
     <figure class="card diagram">
       <svg viewBox="0 0 1000 680" role="img" aria-labelledby="arch-title arch-desc">
         <title id="arch-title">Architecture diagram</title>
-        <desc id="arch-desc">Visitors resolve the domain in Route 53 and connect over TLS to CloudFront. CloudFront adds security headers (the PDF has its own policy) and serves static files from a private S3 bucket through Origin Access Control. Requests to /api/contact go to a throttled HTTP API, which invokes a Lambda function that checks a honeypot field and sends mail through Amazon SES to an inbox that is never published; it logs each outcome, without personal data, to CloudWatch Logs. CloudFront access logs, without cookies and with viewer IPs kept only 7 days, go to CloudWatch Logs; a daily EventBridge schedule runs an edge report Lambda that queries both log sets, maps probes to MITRE ATT&amp;CK, counts what the contact form blocked and writes a summary into the site bucket for the /edge/ page. GitHub Actions authenticates to AWS with OIDC roles to run Terraform, whose state is stored in a separate S3 bucket, and to deploy: apply, sync files, run the report and invalidate the cache.</desc>
+        <desc id="arch-desc">Visitors resolve the domain in Route 53 and connect over TLS to CloudFront. CloudFront adds security headers (the PDF has its own policy) and serves static files from a private S3 bucket through Origin Access Control. Requests to /api/contact go to a throttled HTTP API, which invokes a Lambda function that checks a honeypot field and sends mail through Amazon SES to an inbox that is never published; it logs each outcome, without personal data, to CloudWatch Logs. CloudFront access logs, without cookies and with viewer IPs kept only 7 days, go to CloudWatch Logs; a daily EventBridge schedule runs an edge report Lambda that queries both log sets, maps probes to MITRE ATT&amp;CK, counts what the contact form blocked and writes a summary into the site bucket for the /edge/ page. GitHub Actions authenticates to AWS with OIDC roles to run Terraform, whose state is stored in a separate S3 bucket, and to deploy: apply, sync files, run the report and invalidate the cache. An admin log viewer runs only on the operator's machine: after an OpenID Connect sign-in with a password and then an authenticator code, it runs fixed, read-only queries against the logs and the cost data for resources tagged application = resume, and shows viewer sources only as network prefixes.</desc>
         <defs>
           <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0 0L10 5L0 10z" class="arrowhead" />
@@ -119,37 +120,46 @@ const controls = [
         <text x="678" y="378" class="edge-label">PutObject</text>
 
         <rect x="20" y="510" width="960" height="150" rx="14" class="boundary dashed" />
-        <text x="36" y="534" class="boundary-label">Delivery</text>
+        <text x="36" y="534" class="boundary-label">Delivery &amp; operations</text>
 
         <g class="node">
-          <rect x="40" y="546" width="220" height="96" rx="10" />
-          <text x="150" y="572" class="title">GitHub Actions</text>
-          <text x="150" y="592" class="sub">PR plan · main apply</text>
-          <text x="150" y="609" class="sub">approval gate · PII scan</text>
-          <text x="150" y="626" class="sub">smoke tests · Dependabot</text>
+          <rect x="40" y="546" width="200" height="96" rx="10" />
+          <text x="140" y="572" class="title">GitHub Actions</text>
+          <text x="140" y="592" class="sub">PR plan · main apply</text>
+          <text x="140" y="609" class="sub">approval gate · PII scan</text>
+          <text x="140" y="626" class="sub">smoke tests · Dependabot</text>
         </g>
         <g class="node">
-          <rect x="320" y="546" width="220" height="96" rx="10" />
-          <text x="430" y="572" class="title">IAM OIDC roles</text>
-          <text x="430" y="592" class="sub">short-lived creds</text>
-          <text x="430" y="609" class="sub">immutable repo IDs</text>
-          <text x="430" y="626" class="sub">boundary on new roles</text>
+          <rect x="290" y="546" width="200" height="96" rx="10" />
+          <text x="390" y="572" class="title">IAM OIDC roles</text>
+          <text x="390" y="592" class="sub">short-lived creds</text>
+          <text x="390" y="609" class="sub">immutable repo IDs</text>
+          <text x="390" y="626" class="sub">boundary on new roles</text>
         </g>
         <g class="node">
-          <rect x="620" y="546" width="220" height="96" rx="10" />
-          <text x="730" y="572" class="title">Terraform state</text>
-          <text x="730" y="592" class="sub">own S3 bucket</text>
-          <text x="730" y="609" class="sub">versioned · locked</text>
-          <text x="730" y="626" class="sub">bootstrap + main</text>
+          <rect x="560" y="546" width="190" height="96" rx="10" />
+          <text x="655" y="572" class="title">Terraform state</text>
+          <text x="655" y="592" class="sub">own S3 bucket</text>
+          <text x="655" y="609" class="sub">versioned · locked</text>
+          <text x="655" y="626" class="sub">bootstrap + main</text>
         </g>
-        <path d="M260 594 L 320 594" class="edge" marker-end="url(#arrow)" />
-        <text x="272" y="584" class="edge-label">OIDC</text>
-        <path d="M540 594 L 620 594" class="edge" marker-end="url(#arrow)" />
-        <text x="548" y="584" class="edge-label">plan/apply</text>
-        <path d="M430 546 L 430 490" class="edge dashed-edge" marker-end="url(#arrow)" />
-        <text x="440" y="504" class="edge-label">deploy: apply · sync · run report · invalidate</text>
+        <g class="node accent">
+          <rect x="790" y="546" width="170" height="96" rx="10" />
+          <text x="875" y="572" class="title">Admin viewer</text>
+          <text x="875" y="592" class="sub">localhost only</text>
+          <text x="875" y="609" class="sub">OIDC + PKCE · MFA</text>
+          <text x="875" y="626" class="sub">IP prefixes only</text>
+        </g>
+        <path d="M240 594 L 290 594" class="edge" marker-end="url(#arrow)" />
+        <text x="248" y="584" class="edge-label">OIDC</text>
+        <path d="M490 594 L 560 594" class="edge" marker-end="url(#arrow)" />
+        <text x="492" y="584" class="edge-label">plan/apply</text>
+        <path d="M390 546 L 390 490" class="edge dashed-edge" marker-end="url(#arrow)" />
+        <text x="400" y="504" class="edge-label">deploy: apply · sync · run report · invalidate</text>
+        <path d="M875 546 L 875 490" class="edge dashed-edge" marker-end="url(#arrow)" />
+        <text x="785" y="504" class="edge-label">read-only</text>
       </svg>
-      <figcaption class="muted mono">Teal arrows: request path. Grey: mail, logging and the daily report. Dashed: deployment. Nothing outside the CDN is publicly reachable; the S3 website endpoint is not used.</figcaption>
+      <figcaption class="muted mono">Teal arrows: request path. Grey: mail, logging and the daily report. Dashed: deployment and the operator’s read-only log viewer. Nothing outside the CDN is publicly reachable; the S3 website endpoint is not used.</figcaption>
     </figure>
 
     <h2 class="sec">Controls by layer</h2>
