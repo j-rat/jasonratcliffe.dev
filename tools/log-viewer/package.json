@@ -1,0 +1,20 @@
+{
+  "name": "resume-site-log-viewer",
+  "private": true,
+  "description": "Admin log viewer prototype (localhost only): OIDC sign-in with MFA, read-only CloudWatch Logs Insights views.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup": "node setup.mjs",
+    "start": "node server.mjs",
+    "sample": "node server.mjs --sample",
+    "code": "node setup.mjs --code",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "3.1165.0",
+    "@aws-sdk/client-cost-explorer": "3.1165.0"
+  }
+}

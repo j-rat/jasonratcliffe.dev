@@ -9,7 +9,8 @@ BOOT     := infra/bootstrap
 
 .PHONY: help install dev build scan test lint check \
         bootstrap-init bootstrap-plan bootstrap-apply bootstrap-migrate \
-        init plan apply publish deploy
+        init plan apply publish deploy \
+        log-viewer-setup log-viewer log-viewer-sample log-viewer-test
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -70,3 +71,18 @@ publish: ## Upload site/dist and invalidate CloudFront
 	aws cloudfront create-invalidation --distribution-id "$$dist" --paths '/*' --query Invalidation.Status --output text
 
 deploy: check plan apply publish ## Laptop fallback: check, plan, apply, publish
+
+# ---- Admin log viewer prototype (tools/log-viewer, localhost only) ----
+LV := tools/log-viewer
+
+log-viewer-setup: ## Install the log viewer and create the local admin (prints password + TOTP key)
+	cd $(LV) && npm ci && node setup.mjs
+
+log-viewer: ## Run the log viewer on http://localhost:4322 (real logs via your AWS session)
+	cd $(LV) && node server.mjs
+
+log-viewer-sample: ## Run the log viewer with sample data (no AWS calls)
+	cd $(LV) && node server.mjs --sample
+
+log-viewer-test: ## Log viewer tests (crypto + end-to-end sign-in flow)
+	cd $(LV) && npm test

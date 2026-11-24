@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Admin sign-in</title>
+  <link rel="stylesheet" href="/static/global.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="wrap login">
+    <p class="eyebrow">Admin</p>
+    <h1>Site logs</h1>
+    <p class="muted">Read-only views of the site's CloudWatch logs. Sign-in uses OpenID Connect (Authorization Code + PKCE) with MFA; tokens stay on the server.</p>
+    <div class="card login-card">
+      <a class="btn btn-primary" href="/auth/start">Sign in with the identity provider</a>
+      <p class="error" data-login-error role="alert" hidden></p>
+      <ul class="muted small">
+        <li>Password and authenticator code are checked by the identity provider, never by this app.</li>
+        <li>Your browser only receives an HttpOnly session cookie.</li>
+        <li>Views are fixed queries; nothing you send becomes query text.</li>
+      </ul>
+    </div>
+  </main>
+  <script src="/static/login.js"></script>
+</body>
+</html>

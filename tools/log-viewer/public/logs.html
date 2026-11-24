@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Site logs</title>
+  <link rel="stylesheet" href="/static/global.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <p class="brand mono">~/logs <span class="muted">· admin</span></p>
+      <p class="who mono muted" data-who></p>
+      <button class="btn" type="button" data-logout>Sign out</button>
+    </div>
+  </header>
+  <main class="wrap logs">
+    <aside class="views" aria-label="Views">
+      <ul data-views></ul>
+    </aside>
+    <section class="result" aria-live="polite">
+      <div class="toolbar">
+        <div>
+          <h1 data-title>Loading…</h1>
+          <p class="muted small" data-desc></p>
+        </div>
+        <div class="controls">
+          <label class="visually-hidden" for="range">Time range</label>
+          <select id="range" data-range></select>
+          <button class="btn btn-primary" type="button" data-run>Run</button>
+        </div>
+      </div>
+      <p class="banner" data-banner hidden></p>
+      <div class="tiles" data-tiles hidden></div>
+      <p class="meta mono muted small" data-meta></p>
+      <div class="chart card" data-chart hidden></div>
+      <div class="table-tools">
+        <label class="visually-hidden" for="group" data-group-label>Group rows</label>
+        <select id="group" data-group hidden></select>
+        <p class="mono muted small" data-count></p>
+      </div>
+      <div class="table-wrap card"><table data-table></table></div>
+      <nav class="pager" data-pager aria-label="Pages"></nav>
+      <div class="loader" data-loader hidden role="status" aria-label="Loading">
+        <svg viewBox="0 0 640 120" aria-hidden="true">
+          <defs>
+            <!-- Everything left of the current's front edge is powered. -->
+            <clipPath id="lv-front"><rect data-front x="0" y="0" width="0" height="120" /></clipPath>
+          </defs>
+          <!-- Unpowered board: the word as copper traces, a bus along the bottom, a via down from each letter. -->
+          <g class="ld-dim">
+            <text class="ld-glyphs" x="320" y="66">jasonratcliffe.dev</text>
+            <g data-traces></g>
+          </g>
+          <!-- Powered copy, revealed left to right; dashes flowing along the strokes are the current. -->
+          <g class="ld-live" clip-path="url(#lv-front)">
+            <text class="ld-glyphs ld-glow" x="320" y="66">jasonratcliffe.dev</text>
+            <text class="ld-glyphs ld-current" x="320" y="66">jasonratcliffe.dev</text>
+            <g data-traces-live></g>
+          </g>
+          <g class="ld-terminals">
+            <path d="M6 88 v16 M12 91 v10" />
+            <circle cx="632" cy="96" r="4" />
+          </g>
+          <circle class="ld-spark" data-spark cx="0" cy="96" r="3" />
+        </svg>
+        <p class="ld-caption mono" data-loader-caption>Querying CloudWatch Logs…</p>
+      </div>
+    </section>
+  </main>
+  <script src="/static/logs.js"></script>
+</body>
+</html>

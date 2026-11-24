@@ -1,0 +1,7 @@
+/* Local identity provider's sign-in page. */
+.op { max-width: 460px; padding-top: 72px; }
+.op form { display: grid; gap: 14px; }
+.op label { display: grid; gap: 6px; font: 600 0.85rem var(--mono); }
+.op input { font: 1rem var(--mono); color: var(--text); background: var(--bg-sunken); border: 1px solid var(--line-strong); border-radius: 8px; padding: 10px 12px; }
+.op input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.op .error { color: var(--danger); margin: 0; }
