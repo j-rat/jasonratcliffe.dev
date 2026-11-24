@@ -46,8 +46,10 @@ Terraform is installed via Homebrew (`/opt/homebrew/bin/terraform`). CI pins 1.1
   tag needs `src=`) and `grep -rl 'style="' site/dist`.
 - Terminal and animation output is built with DOM text nodes. Don't introduce `innerHTML`.
 - **The edge report (`data/edge-threats.json`) never contains viewer IPs, query strings or paths that didn't
-  match a probe pattern** (spec `reject_if`). IPs aren't even logged: keep `c-ip`, `x-forwarded-for` and
-  `cs(Cookie)` out of `record_fields` in `infra/main/edge.tf`. Its `contact` block publishes defense counts only
+  match a probe pattern** (spec `reject_if`). Viewer IPs (`c-ip`) are logged for the admin viewer only, with
+  7-day retention (`local.edge_log_retention_days`); the report's queries must never select `c-ip`, and the viewer
+  must only ever send /24 or /48 prefixes to the browser (`ipPrefix` in `tools/log-viewer/lib/logs.mjs`). Keep
+  `x-forwarded-for` and `cs(Cookie)` out of `record_fields` in `infra/main/edge.tf`. Its `contact` block publishes defense counts only
   (honeypot, bypass, cross-origin, invalid, throttled, wrong route), never the number of real messages sent, and
   the contact Lambda must keep logging outcomes without names, addresses or message text. `/edge/` renders that data with text nodes only,
   because paths and user agents are attacker-controlled.
@@ -97,6 +99,8 @@ Consequences of this model:
 - A new AWS service or action used by `infra/main` usually needs adding to
   `data.aws_iam_policy_document.deploy` in `infra/bootstrap/github-oidc.tf`, applied locally, before CI can use it.
 - The `project` variable must match between the two stacks.
+- Both providers' `default_tags` include `application = "resume"`. Keep it: the admin log viewer's cost view filters
+  Cost Explorer on that tag, so an untagged resource's cost silently disappears from it.
 
 **State.** S3 backend with partial config. Bucket, region, `encrypt` and `use_lockfile` come from
 `infra/backend.hcl` locally (git-ignored; see `backend.hcl.example`) or from `-backend-config` built from
@@ -110,6 +114,14 @@ touch `main/*`.
   `deploy` job: terraform apply, then `s3 sync` (`_astro/` immutable for a year, without `--delete`; everything else
   `max-age=300` with `--delete`), invalidation, and live smoke tests.
 - Actions are pinned to commit SHAs with a version comment. Keep that when bumping (Dependabot is configured).
+
+## Admin log viewer (prototype)
+
+`tools/log-viewer/` (spec M15) runs only on localhost: a backend-for-frontend on :4322 and a stand-in OIDC
+provider on :4323 (Authorization Code + PKCE, password + TOTP, RS256). Tokens never reach the browser; the
+browser sends only view and range ids, and query text comes from `lib/views.mjs`. Its cost view reads Cost Explorer
+filtered to `application = resume` (cached 6 h, because each Cost Explorer request costs $0.01). `.local/` holds keys and
+secrets and is git-ignored. `make log-viewer-test` runs its tests. Keep it out of the site build.
 
 ## Conventions
 

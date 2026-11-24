@@ -663,6 +663,13 @@ almost never need this. If you do, download the older `main/terraform.tfstate` v
   protection**, **Dependabot alerts** (`.github/dependabot.yml` is already set up for actions, npm and
   Terraform), and **CodeQL**.
 - **Signed commits.** Add ☑ *Require signed commits* to the `main` ruleset.
+- **Cost allocation tag.** Every resource in both stacks gets `application = resume` from the provider
+  `default_tags`, and the admin log viewer's cost view (tools/log-viewer) shows only costs carrying it.
+  After the first apply with the tag, wait about 24 hours for Billing to see the key, then set
+  `activate_cost_tag = true` in `infra/bootstrap/terraform.tfvars` and run `make bootstrap-plan bootstrap-apply`
+  (expect 1 to add). This needs the management (payer) account; in an AWS Organizations member account,
+  activate the tag in the payer's Billing console instead. Costs before activation aren't tagged unless you
+  request a backfill: `aws ce start-cost-allocation-tag-backfill --backfill-from <YYYY-MM>-01T00:00:00Z`.
 - **SES production access** isn't needed. The site only sends to your own verified address, which the
   sandbox allows.
 
@@ -696,8 +703,8 @@ trend and 30 days of contact form defenses (honeypot catches, direct-API bypass,
 throttling, rejected input). It refreshes daily.
 
 ```text
-CloudFront access logs ──▶ CloudWatch Logs /aws/vendedlogs/resume-site-cloudfront (30 days)
-   (no viewer IP, X-Forwarded-For or cookies: excluded in the log delivery's record_fields)
+CloudFront access logs ──▶ CloudWatch Logs /aws/vendedlogs/resume-site-cloudfront (7 days)
+   (viewer IP kept 7 days for the admin viewer; no X-Forwarded-For or cookies: record_fields)
 Contact Lambda outcome logs ──▶ CloudWatch Logs /aws/lambda/resume-site-contact (30 days, no personal data)
 EventBridge rule resume-site-edge-report-daily (00:15 UTC) ──▶ Lambda resume-site-edge-report
    Logs Insights query → categories from infra/main/lambda/edge_report/patterns.json
@@ -708,7 +715,9 @@ EventBridge rule resume-site-edge-report-daily (00:15 UTC) ──▶ Lambda resu
 - **Permissions.** The Lambda's role can run `logs:StartQuery` on the CloudFront and contact log groups and
   write exactly one object, `data/edge-threats.json`. The workload boundary caps it at `/aws/vendedlogs/resume-site-*`,
   `/aws/lambda/resume-site-contact` and `data/*`.
-- **Privacy.** IPs are never logged. The published JSON never contains query strings or paths that
+- **Privacy.** Viewer IPs (`c-ip`) are logged but kept only 7 days. The edge report never selects them, and the
+  admin log viewer shows them only as /24 (IPv4) or /48 (IPv6) prefixes. The report's 30-day trend and the
+  contact form's throttling history are carried in the published JSON, so they outlive the logs. The published JSON never contains query strings or paths that
   didn't match a pattern. Matched paths are shortened to 80 characters, emails are redacted, and
   characters like `<` are percent-encoded. The page renders everything as text. Contact stats are counts
   only: the number of real messages sent is never published, and the deploy smoke test's post is logged as

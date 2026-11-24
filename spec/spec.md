@@ -32,6 +32,7 @@ Prospective hiring managers, recruiters and networking contacts who know Jason w
 | 12 | Detailed step-by-step guide for deploying with GitHub Actions (docs/DEPLOYMENT.md): one-time bootstrap, DNS cutover, GitHub OIDC roles, secrets/variables, PR plan workflow, main-branch apply and deploy, verification and rollback | Following docs/DEPLOYMENT.md top to bottom from a fresh AWS account and empty GitHub repo, every step names the exact command or click, what you should see, and how to fix the common failure; no step requires long-lived AWS access keys in GitHub. |
 | 13 | Edge threat dashboard (/edge/): daily summary of CloudFront access logs showing enumeration and secret-leakage probes by category, mapped to MITRE ATT&CK, with the status codes returned, top probed paths, scanner families, countries and a 30-day trend | Request /.env on the live site and get 404; after the next daily run (or a manual run of the summary Lambda), /edge/ shows the probe under T1552.001 with status 404 and a 'last updated' time under 24 hours old; data/edge-threats.json contains no IP addresses or query strings; the page loads with no CSP errors at 375px and 1366px. |
 | 14 | Contact form defenses on /edge/: 30 days of honeypot catches, direct-API bypass attempts, cross-site posts, throttled requests, rejected input and wrong-route requests, as tiles, a stacked daily chart and rejection reasons | POST to /api/contact through the site with the hidden website field filled: the response is 200 and no email arrives; after the next report run, /edge/ shows the Honeypot catches tile increased by 1; data/edge-threats.json has a contact block with counts only and no 'sent' count; the deploy smoke test's post is not counted; the section renders with no CSP errors at 375px and 1366px. |
+| 15 | Admin log viewer (/admin/, prototype in tools/log-viewer on localhost first): MFA sign-in through OIDC Authorization Code + PKCE, a backend-for-frontend that keeps tokens server-side behind an HttpOnly cookie, and read-only named views over the site's CloudWatch logs (edge traffic, top paths, errors, cache results, contact outcomes, Lambda errors, recent requests) and a cost overview by architecture component, limited to resources tagged application = resume | Run `make log-viewer`, open http://localhost:4322: you are redirected to sign in; the authenticator code is asked for only after a correct username and password; any wrong username, password or code gets the same generic "Authentication failed." with no hint which was wrong; repeated failures lock the account; with the right password and code you land on /logs. Each view returns rows for 1h, 24h and 7d using your local AWS credentials (or labeled sample data without them). Calling /api/query without a session, with a tampered or expired access token, or with an unknown view name returns 401/400 and runs no query. The cost view shows month-to-date, forecast, last-month and 6-month totals and a per-component breakdown, filtered only on the application = resume tag; every AWS resource in both stacks carries that tag. Sign out ends the session. |
 
 ## Nice to have
 
@@ -43,8 +44,8 @@ Prospective hiring managers, recruiters and networking contacts who know Jason w
 ## Out of scope
 
 - Publishing personal contact details (they are a reject_if line)
-- Visitor analytics or tracking (cookies, third-party scripts, per-visitor profiles); aggregate edge security telemetry (M13, M14) is in scope
-- A CMS or admin login for the blog
+- Visitor analytics or tracking (third-party scripts, per-visitor profiles); M13 and M14 are in scope
+- A CMS or content editor (M15 is in scope)
 - A hosted inbox such as Workspace or Fastmail
 - A paid web application firewall subscription
 - Transferring the domain registration away from Squarespace
@@ -67,6 +68,10 @@ Prospective hiring managers, recruiters and networking contacts who know Jason w
 - The origin S3 bucket is publicly readable
 - The edge dashboard publishes a viewer IP address, a full query string or a path that didn't match a probe pattern
 - The edge dashboard publishes the number of real contact messages, or any name, email address or message text from the contact form
+- The admin log viewer puts AWS credentials or OAuth tokens where page JavaScript can read them
+- The admin log viewer runs query text supplied by the browser, or queries a log group outside its allowlist
+- Any admin page or API answers without a validated session (signature, issuer, audience, expiry and scope checked)
+- Viewer IPs are kept longer than 7 days, appear in anything published, or reach the admin viewer's browser as full addresses rather than /24 or /48 prefixes
 
 ## Open risks
 
