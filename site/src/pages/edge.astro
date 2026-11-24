@@ -29,7 +29,8 @@ import Base from '../layouts/Base.astro';
     </section>
 
     <section aria-labelledby="trend-h">
-      <h2 id="trend-h">30-day trend</h2>
+      <h2 id="trend-h">ATT&amp;CK techniques over 30 days</h2>
+      <p class="muted small">Probes per day for each technique category, busiest first. Hover a day for its count.</p>
       <div class="card trend" data-edge-trend></div>
     </section>
 
@@ -119,14 +120,37 @@ import Base from '../layouts/Base.astro';
   .edge-page .ids a { font: 600 0.8rem var(--mono); border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px 10px; text-decoration: none; }
   .edge-page .codes { font: 0.8rem var(--mono); color: var(--text-muted); }
   .edge-page .codes .bad { color: var(--danger); font-weight: 700; }
-  .edge-page .trend svg { width: 100%; height: auto; display: block; }
-  .edge-page .trend .probes { fill: var(--accent); }
-  .edge-page .trend .requests { fill: var(--line-strong); }
+  .edge-page .trend > svg, .edge-page .contact-trend svg { width: 100%; height: auto; display: block; }
+  .edge-page .heat { display: grid; gap: 10px; }
+  .edge-page .heat-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
+  .edge-page .heat-row .heat-label { grid-column: 1 / -1; }
+  @media (min-width: 760px) {
+    .edge-page .heat-row { grid-template-columns: minmax(180px, 250px) minmax(0, 1fr) 56px; }
+    .edge-page .heat-row .heat-label { grid-column: auto; }
+  }
+  .edge-page .heat-label { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; min-width: 0; }
+  .edge-page .heat-name { font-size: 0.88rem; }
+  .edge-page .heat-ids { font: 0.72rem var(--mono); color: var(--text-muted); }
+  .edge-page .heat-strip { width: 100%; height: 18px; display: block; }
+  .edge-page .heat-total { font: 700 0.9rem var(--mono); text-align: right; }
+  .edge-page .heat-row.zero .heat-name, .edge-page .heat-row.zero .heat-total { color: var(--text-muted); }
+  .edge-page .heat-axis .axis-row { margin: 0; }
+  .edge-page .heat-axis .heat-total { font-weight: 400; font-size: 0.75rem; color: var(--text-muted); }
+  @media (max-width: 759px) { .edge-page .heat-axis .heat-label { display: none; } }
+  /* Sequential, one hue (the accent): no probes = sunken track, then four steps of increasing strength. */
+  .edge-page .l0 { fill: var(--bg-sunken); stroke: var(--line-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .edge-page .l1 { fill: var(--accent); fill-opacity: 0.3; }
+  .edge-page .l2 { fill: var(--accent); fill-opacity: 0.55; }
+  .edge-page .l3 { fill: var(--accent); fill-opacity: 0.8; }
+  .edge-page .l4 { fill: var(--accent-strong); }
+  .edge-page .nodata { fill: var(--line); fill-opacity: 0.45; }
+  .edge-page .heat-legend { flex-wrap: wrap; align-items: center; }
+  .edge-page .heat-legend > span { display: inline-flex; align-items: center; gap: 3px; }
+  .edge-page .heat-key { width: 10px; height: 14px; display: inline-block; vertical-align: middle; }
+  .edge-page .heat-note { margin: 6px 0 0; }
   .edge-page .axis-row { display: flex; justify-content: space-between; margin: 6px 0 0; font: 0.75rem var(--mono); color: var(--text-muted); }
   .edge-page .legend-row { display: flex; gap: 16px; font: 0.8rem var(--mono); color: var(--text-muted); margin-top: 8px; }
   .edge-page .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
-  .edge-page .swatch.p { background: var(--accent); }
-  .edge-page .swatch.r { background: var(--line-strong); }
   .edge-page .cols { display: grid; gap: 18px; grid-template-columns: 1fr; margin-top: 28px; }
   @media (min-width: 900px) { .edge-page .cols { grid-template-columns: 1.4fr 1fr 1fr; } }
   .edge-page .cols section { margin-top: 0; min-width: 0; }

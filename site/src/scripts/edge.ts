@@ -10,7 +10,7 @@ const NON_FILE_CATEGORIES = new Set(['vulnerability-scanning', 'exploit-attempts
 
 interface Mitre { id: string; name: string }
 interface Category { id: string; label: string; tactic: string; mitre: Mitre[]; count: number; statuses: Record<string, number> }
-interface Day { date: string; requests: number; probes: number }
+interface Day { date: string; requests: number; probes: number; by_category?: Record<string, number> }
 export const CONTACT_KEYS = ['honeypot', 'bypass', 'cross_origin', 'invalid', 'throttled', 'wrong_route'] as const;
 type ContactKey = (typeof CONTACT_KEYS)[number];
 type ContactCounts = Record<ContactKey, number>;
@@ -153,38 +153,85 @@ function renderTechniques(host: HTMLElement, r: EdgeReport) {
   }
 }
 
+const TREND_DAYS = 30;
+const DAY_MS = 86_400_000;
+
+/** Last 30 complete UTC days, oldest first, ending the day before the report was generated. */
+export function trendDates(generatedAt: string): string[] {
+  const end = new Date(generatedAt.slice(0, 10) + 'T00:00:00Z').getTime() - DAY_MS;
+  return Array.from({ length: TREND_DAYS }, (_, k) => new Date(end - (TREND_DAYS - 1 - k) * DAY_MS).toISOString().slice(0, 10));
+}
+
+/** Shade 1-4 for a nonzero count; square-root scale so one noisy technique doesn't wash out the rest. */
+export const heatLevel = (n: number, max: number) => (n <= 0 ? 0 : Math.min(4, Math.max(1, Math.ceil(4 * Math.sqrt(n / Math.max(1, max))))));
+
+function shortDate(d: string): string {
+  return new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
 function renderTrend(host: HTMLElement, r: EdgeReport) {
   host.replaceChildren();
-  const days = r.daily.slice(-30);
-  if (!days.length) {
+  const dates = trendDates(r.generated_at);
+  const byDate = new Map(r.daily.filter((d) => isStr(d.date)).map((d) => [d.date, d]));
+  const firstLogged = r.daily.map((d) => d.date).filter((d) => dates.includes(d)).sort()[0];
+  if (!firstLogged) {
     host.append(el('p', 'empty', 'The trend fills in as daily reports accumulate.'));
     return;
   }
-  const W = 600, H = 160, gap = 2;
-  const max = Math.max(1, ...days.map((d) => d.requests));
-  const bw = (W - gap * (days.length - 1)) / days.length;
-  const chart = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
-  const total = days.reduce((s, d) => s + d.probes, 0);
-  const peak = days.reduce((a, d) => (d.probes > a.probes ? d : a), days[0]);
-  chart.setAttribute('aria-label', `${fmt(total)} probes over ${days.length} days; busiest day ${peak.date} with ${fmt(peak.probes)}.`);
-  days.forEach((d, i) => {
-    const x = i * (bw + gap);
-    const rh = (d.requests / max) * H;
-    const ph = (d.probes / max) * H;
-    const req = svg('rect', { class: 'requests', x, y: H - rh, width: bw, height: rh });
-    const pro = svg('rect', { class: 'probes', x, y: H - ph, width: bw, height: ph });
-    const tip = svg('title', {});
-    tip.textContent = `${d.date}: ${fmt(d.probes)} probes of ${fmt(d.requests)} requests`;
-    req.append(tip);
-    pro.append(tip.cloneNode(true));
-    chart.append(req, pro);
-  });
-  const axis = el('p', 'axis-row');
-  axis.append(el('span', undefined, days[0].date), el('span', undefined, days[days.length - 1].date));
-  const legend = el('p', 'legend-row');
-  const item = (cls: string, label: string) => { const s = el('span'); s.append(el('span', `swatch ${cls}`), label); return s; };
-  legend.append(item('p', 'Probes'), item('r', 'All requests'));
-  host.append(chart, axis, legend);
+  const count = (date: string, id: string) => {
+    const v = byDate.get(date)?.by_category?.[id];
+    return isNum(v) ? v : 0;
+  };
+  const rows = r.categories
+    .map((c) => ({ c, counts: dates.map((d) => count(d, c.id)) }))
+    .map((x) => ({ ...x, total: x.counts.reduce((a, b) => a + b, 0) }))
+    .sort((a, b) => b.total - a.total);
+  const max = Math.max(1, ...rows.flatMap((x) => x.counts));
+
+  const grid = el('div', 'heat');
+  const W = TREND_DAYS * 12;
+  for (const { c, counts, total } of rows) {
+    const label = el('div', 'heat-label');
+    const ids = c.mitre.filter((m) => techniqueUrl(m.id)).map((m) => m.id).join(' · ');
+    label.append(el('span', 'heat-name', c.label), el('span', 'heat-ids', ids));
+    const strip = svg('svg', { viewBox: `0 0 ${W} 14`, preserveAspectRatio: 'none', role: 'img', class: 'heat-strip' });
+    const peak = counts.reduce((best, n, k) => (n > counts[best] ? k : best), 0);
+    strip.setAttribute('aria-label', total
+      ? `${c.label}: ${fmt(total)} probes in ${TREND_DAYS} days, most on ${dates[peak]} (${fmt(counts[peak])}).`
+      : `${c.label}: none in ${TREND_DAYS} days.`);
+    dates.forEach((d, k) => {
+      const logged = byDate.has(d);
+      const n = counts[k];
+      const cell = svg('rect', { x: k * 12, y: 0, width: 10, height: 14, rx: 2, class: logged ? `l${heatLevel(n, max)}` : 'nodata' });
+      const tip = svg('title', {});
+      tip.textContent = logged ? `${d} · ${c.label} (${ids}): ${fmt(n)} probe${n === 1 ? '' : 's'}` : `${d}: before logging began`;
+      cell.append(tip);
+      strip.append(cell);
+    });
+    const tot = el('span', 'heat-total', fmt(total));
+    const row = el('div', total ? 'heat-row' : 'heat-row zero');
+    row.append(label, strip, tot);
+    grid.append(row);
+  }
+  const axis = el('div', 'heat-row heat-axis');
+  const ends = el('p', 'axis-row');
+  ends.append(el('span', undefined, shortDate(dates[0])), el('span', undefined, shortDate(dates[dates.length - 1])));
+  axis.append(el('span', 'heat-label'), ends, el('span', 'heat-total', '30 d'));
+  grid.append(axis);
+
+  const legend = el('p', 'legend-row heat-legend');
+  const box = (cls: string) => {
+    const b = svg('svg', { viewBox: '0 0 10 14', class: 'heat-key', 'aria-hidden': 'true' });
+    b.append(svg('rect', { x: 0, y: 0, width: 10, height: 14, rx: 2, class: cls }));
+    return b;
+  };
+  const scale = el('span');
+  scale.append('0 ', box('l0'), box('l1'), box('l2'), box('l3'), box('l4'), ` ${fmt(max)} probes/day`);
+  const none = el('span');
+  none.append(box('nodata'), ' before logging began');
+  legend.append(scale, none);
+  const note = el('p', 'muted small heat-note', `Shading uses a square-root scale so quieter techniques stay visible. Logging began ${shortDate(firstLogged)}; days fill in as daily reports run.`);
+  host.append(grid, legend, note);
 }
 
 function renderPaths(host: HTMLElement, r: EdgeReport) {
