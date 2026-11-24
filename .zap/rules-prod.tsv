@@ -1,0 +1,23 @@
+10020	FAIL	Anti-clickjacking header missing
+10021	FAIL	X-Content-Type-Options missing
+10038	FAIL	CSP header missing
+10035	FAIL	HSTS missing
+10063	FAIL	Permissions-Policy missing
+10055	FAIL	CSP problems
+10017	FAIL	Cross-domain JavaScript source file inclusion
+10098	FAIL	Cross-domain misconfiguration (CORS)
+10110	FAIL	Dangerous JS functions
+10023	FAIL	Debug error messages
+10062	FAIL	PII disclosure
+10024	FAIL	Sensitive information in URL
+10097	FAIL	Hash disclosure
+10054	FAIL	Cookie without SameSite (the site sets no cookies)
+10010	FAIL	Cookie without HttpOnly (the site sets no cookies)
+90004	IGNORE	COEP: not used (no cross-origin isolation needed)
+10036	IGNORE	Server: AmazonS3 names the origin type only, no version
+10049	IGNORE	Cacheable content is intended (5-minute pages, immutable assets)
+10050	IGNORE	Retrieved from cache: CloudFront working as intended
+10015	IGNORE	Cache-control directives are intended
+10096	IGNORE	Timestamp disclosure: build-time numbers and the blog's example JWT expiry
+10202	IGNORE	Anti-CSRF token: contact form posts JSON; the API checks Origin and the CloudFront origin secret
+10027	WARN	Suspicious comments

@@ -1,0 +1,218 @@
+# Security scans, shared by deploy.yml (blocks the deploy), ci.yml (pull requests) and security.yml (weekly).
+# None of these jobs can reach AWS: no id-token, read-only contents.
+#
+#   static   Semgrep (SAST + project rules), Checkov (Terraform/Actions), zizmor (workflow security)
+#   secrets  TruffleHog over the new commits (or full history), blocking on verified/unknown secrets
+#   deps     npm audit, blocking on high/critical
+#   dast     build the site, TruffleHog over the built files, OWASP ZAP baseline against a local preview
+name: scan
+
+on:
+  workflow_call:
+    inputs:
+      sarif:
+        description: Upload results to the repository's Security tab
+        type: boolean
+        default: false
+      full-history:
+        description: Scan every commit for secrets, not just the new ones
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: '3.13'
+  NODE_VERSION: 24
+  # Bump together: release tarball and its SHA-256 from the release's checksums file.
+  TRUFFLEHOG_VERSION: 3.99.8
+  TRUFFLEHOG_SHA256: 7c3b02f160f28929a467e29e20fba98746e0729f6e37c3c25761e4f8789abe08
+  # OWASP ZAP 2.17.0 (stable), pinned by digest.
+  ZAP_IMAGE: ghcr.io/zaproxy/zaproxy@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af
+
+jobs:
+  static:
+    name: SAST + IaC + workflow scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # SARIF upload (only when inputs.sarif)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install scanners (hash-pinned)
+        run: python -m pip install --quiet --require-hashes --no-deps -r .github/security-tools/requirements.txt
+
+      - name: Semgrep
+        id: semgrep
+        continue-on-error: true
+        run: |
+          semgrep scan --metrics=off --disable-version-check --quiet \
+            --config p/default --config p/github-actions --config .semgrep/rules.yml \
+            --exclude site/dist --sarif --output semgrep.sarif
+          # SARIF puts severity on the rule; findings marked nosemgrep carry a suppression and don't count.
+          findings='(.runs[0].tool.driver.rules | map({(.id): .defaultConfiguration.level}) | add) as $lv
+            | [.runs[].results[] | select((.suppressions // []) | length == 0) | . + {level: (.level // $lv[.ruleId])}]'
+          {
+            echo "### Semgrep (unsuppressed findings by level)"
+            jq -r "$findings"' | group_by(.level) | map("- \(.[0].level): \(length)") | .[]' semgrep.sarif
+          } >> "$GITHUB_STEP_SUMMARY"
+          jq -r "$findings"' | .[] | select(.level == "error")
+            | "::error file=\(.locations[0].physicalLocation.artifactLocation.uri),line=\(.locations[0].physicalLocation.region.startLine)::\(.ruleId)"' semgrep.sarif
+          test "$(jq "$findings"' | map(select(.level == "error")) | length' semgrep.sarif)" -eq 0
+
+      - name: Checkov
+        id: checkov
+        continue-on-error: true
+        # Accepted checks and their reasons live in .checkov.yaml; anything else that fails blocks.
+        run: checkov --config-file .checkov.yaml --output cli --output sarif --output-file-path console,checkov.sarif
+
+      - name: zizmor
+        id: zizmor
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }} # online audits: known-vulnerable actions, impostor commits
+        run: |
+          zizmor --format sarif .github > zizmor.sarif || true
+          zizmor --min-severity medium --format plain .github
+
+      - name: Upload Semgrep results
+        if: always() && inputs.sarif && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+      - name: Upload Checkov results
+        if: always() && inputs.sarif && hashFiles('checkov.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: checkov.sarif
+          category: checkov
+      - name: Upload zizmor results
+        if: always() && inputs.sarif && hashFiles('zizmor.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor
+
+      - name: Fail on blocking findings
+        if: steps.semgrep.outcome != 'success' || steps.checkov.outcome != 'success' || steps.zizmor.outcome != 'success'
+        env:
+          SEMGREP: ${{ steps.semgrep.outcome }}
+          CHECKOV: ${{ steps.checkov.outcome }}
+          ZIZMOR: ${{ steps.zizmor.outcome }}
+        run: |
+          echo "::error::Blocking findings - semgrep: $SEMGREP, checkov: $CHECKOV, zizmor: $ZIZMOR"
+          exit 1
+
+  secrets:
+    name: Secret scan (TruffleHog)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install TruffleHog (checksum-verified)
+        run: |
+          curl -sSfL -o th.tgz "https://github.com/trufflesecurity/trufflehog/releases/download/v${TRUFFLEHOG_VERSION}/trufflehog_${TRUFFLEHOG_VERSION}_linux_amd64.tar.gz"
+          echo "${TRUFFLEHOG_SHA256}  th.tgz" | sha256sum -c -
+          tar xzf th.tgz trufflehog && sudo install trufflehog /usr/local/bin/ && rm -f th.tgz trufflehog
+      - name: Scan commits
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          FULL: ${{ inputs.full-history }}
+        run: |
+          args=()
+          if [ "$FULL" != "true" ]; then
+            if [ "$EVENT" = push ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then args=(--since-commit "$BEFORE")
+            elif [ "$EVENT" = pull_request ]; then args=(--since-commit "$PR_BASE"); fi
+          fi
+          rc=0
+          trufflehog git file://. "${args[@]}" --results=verified,unknown --json --no-update --fail > findings.json || rc=$?
+          # Never print the secret itself (public logs): detector, file, line and commit only.
+          jq -r '"::error file=\(.SourceMetadata.Data.Git.file),line=\(.SourceMetadata.Data.Git.line)::\(.DetectorName) secret (verified: \(.Verified)) in commit \(.SourceMetadata.Data.Git.commit[0:7]). Rotate it, then remove it."' findings.json
+          echo "### TruffleHog: $(wc -l < findings.json | tr -d ' ') verified/unknown secret(s) in ${args[*]:-full history}" >> "$GITHUB_STEP_SUMMARY"
+          rm -f findings.json
+          exit "$rc"
+
+  deps:
+    name: Dependency audit (npm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: npm audit (high and critical block)
+        run: |
+          status=0
+          for d in site tools/log-viewer; do
+            echo "== $d"
+            (cd "$d" && npm audit --audit-level=high) || status=1
+          done
+          exit "$status"
+
+  dast:
+    name: DAST (ZAP baseline, local preview)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Build the site (no PDF)
+        working-directory: site
+        run: npm ci && npx astro build
+      - name: Install TruffleHog (checksum-verified)
+        run: |
+          curl -sSfL -o th.tgz "https://github.com/trufflesecurity/trufflehog/releases/download/v${TRUFFLEHOG_VERSION}/trufflehog_${TRUFFLEHOG_VERSION}_linux_amd64.tar.gz"
+          echo "${TRUFFLEHOG_SHA256}  th.tgz" | sha256sum -c -
+          tar xzf th.tgz trufflehog && sudo install trufflehog /usr/local/bin/ && rm -f th.tgz trufflehog
+      - name: Secrets in the built site
+        run: |
+          rc=0
+          trufflehog filesystem site/dist --results=verified,unknown --json --no-update --fail > findings.json || rc=$?
+          jq -r '"::error file=\(.SourceMetadata.Data.Filesystem.file)::\(.DetectorName) secret in the built site (verified: \(.Verified))"' findings.json
+          rm -f findings.json
+          exit "$rc"
+      - name: Start the preview server
+        working-directory: site
+        run: |
+          npx astro preview --host 127.0.0.1 --port 4321 > ../preview.log 2>&1 &
+          for _ in $(seq 1 60); do curl -sf -o /dev/null http://localhost:4321/ && exit 0; sleep 1; done
+          cat ../preview.log; exit 1
+      - name: ZAP baseline (passive)
+        # Headers are CloudFront's job, so .zap/rules-local.tsv ignores them here; the weekly production scan checks them.
+        run: |
+          mkdir -p zap && chmod 777 zap && cp .zap/rules-local.tsv zap/rules.tsv
+          rc=0
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" "$ZAP_IMAGE" \
+            zap-baseline.py -t http://localhost:4321/ -c rules.tsv -m 2 -I -J report.json -r report.html | tee zap/out.txt || rc=${PIPESTATUS[0]}
+          {
+            echo "### ZAP baseline (local preview)"
+            echo "Rules marked IGNORE in .zap/ are left out; FAIL lines are what blocks."
+            echo '```'
+            grep -E '^(FAIL|WARN)' zap/out.txt || echo "no report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+      - name: Keep the ZAP report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zap-local
+          path: zap/report.html
+          retention-days: 14
+          if-no-files-found: ignore

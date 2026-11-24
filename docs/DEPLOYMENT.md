@@ -32,15 +32,22 @@ credentials.
                           ├─ site:            npm ci → astro check → build → PDF → PII scan
                           ├─ lambda:          python unittest
                           ├─ terraform-lint:  fmt -check, validate (both stacks)
+                          ├─ scan:            scan.yml (SAST, IaC, workflows, secrets, npm audit, DAST) - part 14
+                          ├─ dependency-review: new dependencies with high/critical advisories fail
                           └─ terraform-plan:  OIDC → gha-resume-site-plan (read-only) → plan summary
                                                     (sub = repo:<owner>/<repo>:pull_request)
 
  merge to main ─────▶ deploy.yml
                           ├─ build:    tests + build + PII scan → artifact "site-dist"
+                          ├─ scan:     scan.yml, in parallel with build; blocking findings stop the deploy
                           └─ deploy:   ⏸ waits for your approval (environment: production)
                                        OIDC → gha-resume-site-apply → terraform plan + apply
                                        → s3 sync → CloudFront invalidation → live smoke tests
                                        (sub = repo:<owner>/<repo>:environment:production)
+
+ push / PR / Mondays ▶ security.yml
+                          ├─ codeql:   JavaScript/TypeScript, Python, Actions → Security tab
+                          └─ weekly:   scan.yml over full history + passive ZAP baseline of the live site
 ```
 
 **Two Terraform stacks:**
@@ -659,9 +666,9 @@ almost never need this. If you do, download the older `main/terraform.tfstate` v
 - **Drift detection.** Add a scheduled workflow (`on: schedule`) that runs the read-only plan and fails
   if it's not `No changes`. It needs a third trust condition, e.g.
   `repo:<owner>/<repo>:ref:refs/heads/main`, on the plan role.
-- **GitHub security features.** Settings → Code security: enable **Secret scanning** with **push
-  protection**, **Dependabot alerts** (`.github/dependabot.yml` is already set up for actions, npm and
-  Terraform), and **CodeQL**.
+- **GitHub security features** are on (secret scanning with push protection, Dependabot alerts and security
+  updates) and CodeQL runs from `security.yml`. See part 14.
+- **DNSSEC** is also the one accepted Checkov finding (`CKV2_AWS_38` in `.checkov.yaml`) marked as a follow-up.
 - **Signed commits.** Add ☑ *Require signed commits* to the `main` ruleset.
 - **Cost allocation tag.** Every resource in both stacks gets `application = resume` from the provider
   `default_tags`, and the admin log viewer's cost view (tools/log-viewer) shows only costs carrying it.
@@ -768,3 +775,61 @@ The main stack then changes 2 resources in place (the report role policy and the
 - **Contact form defenses missing:** the report's `contact` block is `null`, usually because bootstrap
   wasn't re-applied (13.1). Check the report Lambda's log for `contact-stats-failed`.
 - **Honeypot catches:** bots that filled the hidden field. They were told the message was sent; nothing was.
+
+---
+
+## Part 14 – Security checks in the pipeline
+
+Every push to `main` runs `.github/workflows/scan.yml` in parallel with the build. A blocking finding fails the
+run before it reaches the approval gate, so nothing is deployed. Pull requests run the same scans (plus dependency
+review), and `security.yml` adds CodeQL on every push and a weekly sweep. None of these jobs can reach AWS: they
+have read-only repository access and no OIDC token.
+
+| Check | Tool | Blocks the deploy | Reported only |
+|---|---|---|---|
+| SAST | Semgrep (`p/default`, `p/github-actions`, project rules in `.semgrep/rules.yml`) | ERROR-level findings, including every project rule | Warnings and notes (Security tab) |
+| SAST | CodeQL (`security-extended`), `security.yml` | — | Everything (Security tab) |
+| IaC | Checkov over `infra/` and `.github/` | Any failed check not listed in `.checkov.yaml` | — |
+| Workflows | zizmor (online audits) | Medium and above | Low and informational |
+| Secrets | TruffleHog over new commits (weekly: full history) and over the built site | Verified or unknown secrets | Unverified matches are not listed |
+| Secrets | GitHub secret scanning + push protection | Pushes containing known secret types are refused | Alerts (Security tab) |
+| Dependencies | `npm audit` (site, log viewer); dependency review on PRs | High and critical | Lower severities |
+| DAST | OWASP ZAP baseline (passive) against a local preview of the build | Rules marked FAIL in `.zap/rules-local.tsv` | WARN rules (job summary, report artifact) |
+| DAST | ZAP baseline against production, weekly | Rules marked FAIL in `.zap/rules-prod.tsv` (missing security headers, CORS, cookies) | WARN rules |
+
+The project rules turn the hard rules in `CLAUDE.md` into checks: no `innerHTML`-style sinks or `set:html`,
+no `style=""` attributes or inline scripts, the edge report never selects `c-ip`, and `record_fields` never
+includes `x-forwarded-for` or `cs(Cookie)`.
+
+ZAP never runs an active (attacking) scan against production: that would trip the API throttling, inflate the
+contact-form counts on `/edge/` and could send real mail. The weekly passive scan does show up on `/edge/` like
+any visitor.
+
+### 14.1 Handling a finding
+
+- **Fix it.** The job summary and the Security tab (Security → Code scanning) show the file and line.
+- **Accept it, with a reason next to it:**
+  - Semgrep: a `# nosemgrep: <rule-id> -- <reason>` comment on the line (or the line above).
+  - Checkov: add the check ID to `.checkov.yaml` with a comment. A skip applies repo-wide, so prefer fixing.
+  - ZAP: change the rule's action in `.zap/rules-*.tsv` (`IGNORE`, `WARN` or `FAIL`) and say why in the third column.
+- **A TruffleHog finding** means a credential is in git history. Rotate it first (deleting the commit doesn't
+  un-leak it), then remove it. The job prints the detector, file, line and commit, never the secret.
+
+### 14.2 Running the scans locally
+
+```bash
+python3 -m venv .venv-sec && .venv-sec/bin/pip install semgrep checkov zizmor   # any recent versions
+.venv-sec/bin/semgrep scan --metrics=off --config p/default --config p/github-actions --config .semgrep/rules.yml --exclude site/dist
+.venv-sec/bin/checkov --config-file .checkov.yaml
+GH_TOKEN=$(gh auth token) .venv-sec/bin/zizmor .github
+brew install trufflehog && trufflehog git file://. --results=verified,unknown
+```
+
+### 14.3 Keeping the tools current
+
+- **Actions** (CodeQL, dependency review) and the **scanner CLIs** (`.github/security-tools/requirements.txt`,
+  hash-pinned) get Dependabot PRs. Every Dependabot group waits 7 days (scanners 14) before proposing a release.
+- **By hand:** the TruffleHog version and SHA-256 and the ZAP image digest at the top of `scan.yml` (and the digest
+  in `security.yml`). Take versions at least two weeks old; get the checksum from the release's `checksums.txt`
+  and the digest with `docker pull` + `docker inspect --format '{{index .RepoDigests 0}}'`.
+- To regenerate the scanner lock, run the `uv pip compile` command in `.github/security-tools/requirements.in`.

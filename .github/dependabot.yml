@@ -3,11 +3,13 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
+    cooldown: { default-days: 7 } # let new releases age a week before proposing them
     groups:
       actions: { patterns: ['*'] }
   - package-ecosystem: npm
     directory: /site
     schedule: { interval: weekly }
+    cooldown: { default-days: 7 } # let new releases age a week before proposing them
     groups:
       npm: { patterns: ['*'] }
     ignore:
@@ -17,3 +19,18 @@ updates:
   - package-ecosystem: terraform
     directories: [/infra/bootstrap, /infra/main]
     schedule: { interval: weekly }
+    cooldown: { default-days: 7 } # let new releases age a week before proposing them
+  - package-ecosystem: npm
+    directory: /tools/log-viewer
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    groups:
+      npm: { patterns: ['*'] }
+  # Scanner CLIs (hash-pinned pip-compile lock). The ZAP image digest and the TruffleHog version in
+  # .github/workflows/scan.yml are bumped by hand.
+  - package-ecosystem: pip
+    directory: /.github/security-tools
+    schedule: { interval: weekly }
+    cooldown: { default-days: 14 }
+    groups:
+      scanners: { patterns: ['*'] }

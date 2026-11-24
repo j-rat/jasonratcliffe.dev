@@ -1,0 +1,6 @@
+name: resume-site CodeQL
+queries:
+  - uses: security-extended
+paths-ignore:
+  - site/dist
+  - '**/node_modules'

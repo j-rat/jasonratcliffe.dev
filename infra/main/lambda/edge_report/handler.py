@@ -182,6 +182,7 @@ def fetch_previous(host):
     """Previous published report's daily trend, or [] if missing or malformed."""
     try:
         req = urllib.request.Request(f"https://{host}/data/edge-threats.json", headers={"User-Agent": SELF_UA})
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- always https://<SITE_DOMAIN> set by Terraform, never visitor input
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read(1_000_000))
         daily = data["daily"] if data.get("version") == 1 else []

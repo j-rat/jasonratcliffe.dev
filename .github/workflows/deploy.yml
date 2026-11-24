@@ -1,5 +1,5 @@
-# main branch: test + build, then ONE approval-gated job (environment: production) that
-# applies Terraform, publishes the site to S3, invalidates CloudFront and smoke-tests the live site.
+# main branch: test + build and security scans in parallel, then ONE approval-gated job (environment: production)
+# that applies Terraform, publishes the site to S3, invalidates CloudFront and smoke-tests the live site.
 name: deploy
 
 on:
@@ -52,10 +52,21 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true # .well-known/security.txt
 
+  scan:
+    name: Security scans
+    # SAST, IaC, workflow, secret, dependency and DAST checks (.github/workflows/scan.yml). Blocking findings stop
+    # the deploy before it reaches the approval gate.
+    uses: ./.github/workflows/scan.yml
+    permissions:
+      contents: read
+      security-events: write
+    with:
+      sarif: true
+
   deploy:
     name: Terraform apply + publish
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [build, scan]
     environment: production
     permissions:
       contents: read
@@ -111,13 +122,15 @@ jobs:
           path: dist
       - name: Read deploy targets from Terraform outputs (masked)
         working-directory: infra/main
+        # Masking keeps resource names out of public logs; they are not credentials. Semgrep warns that a copied
+        # workflow on another branch could stop masking; this job only runs on main after approval (nosemgrep below).
         run: |
           bucket=$(terraform output -raw site_bucket)
           dist_id=$(terraform output -raw distribution_id)
-          echo "::add-mask::$bucket"
-          echo "::add-mask::$dist_id"
+          echo "::add-mask::$bucket"  # nosemgrep: yaml.github-actions.security.audit.unsafe-add-mask-workflow-command.unsafe-add-mask-workflow-command
+          echo "::add-mask::$dist_id"  # nosemgrep: yaml.github-actions.security.audit.unsafe-add-mask-workflow-command.unsafe-add-mask-workflow-command
           edge_fn=$(terraform output -raw edge_report_function)
-          echo "::add-mask::$edge_fn"
+          echo "::add-mask::$edge_fn"  # nosemgrep: yaml.github-actions.security.audit.unsafe-add-mask-workflow-command.unsafe-add-mask-workflow-command
           echo "SITE_BUCKET=$bucket" >> "$GITHUB_ENV"
           echo "DISTRIBUTION_ID=$dist_id" >> "$GITHUB_ENV"
           echo "EDGE_REPORT_FUNCTION=$edge_fn" >> "$GITHUB_ENV"
@@ -144,7 +157,7 @@ jobs:
       - name: Invalidate CloudFront
         run: |
           id=$(aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths '/*' --query Invalidation.Id --output text)
-          echo "::add-mask::$id"
+          echo "::add-mask::$id"  # nosemgrep: yaml.github-actions.security.audit.unsafe-add-mask-workflow-command.unsafe-add-mask-workflow-command
           aws cloudfront wait invalidation-completed --distribution-id "$DISTRIBUTION_ID" --id "$id"
       - name: Smoke test
         run: |

@@ -1,0 +1,42 @@
+# Checkov (IaC scan in .github/workflows/scan.yml). Each skipped check has a reason; anything new that fails blocks
+# the deploy. Review this list when the architecture changes: a skip here applies to every resource.
+framework:
+  - terraform
+  - github_actions
+directory:
+  - infra
+  - .github
+quiet: true
+compact: true
+skip-download: true
+skip-check:
+  # --- IAM: scoped by naming, a permissions boundary and the apply role's trust, not by ARN ---
+  - CKV_AWS_356 # "*" resources only where the action has no resource-level support (logs:GetQueryResults, CloudFront IDs unknown before create)
+  - CKV_AWS_111 # deploy policy writes are constrained by name prefixes and the workload boundary
+  - CKV_AWS_109 # deploy policy may create roles only under the boundary and resume-site-* names
+  # --- CloudFront ---
+  - CKV_AWS_86 # access logging is on via CloudWatch standard logging v2 (aws_cloudwatch_log_delivery), which this check doesn't see
+  - CKV_AWS_68 # no paid WAF (spec out_of_scope); throttling, origin secret and edge telemetry instead
+  - CKV2_AWS_47 # same: no WAF to attach managed rules to
+  - CKV_AWS_310 # single static origin; S3 availability is the failover story
+  - CKV_AWS_374 # a public resume is meant to be reachable from every country
+  # --- Logs ---
+  - CKV_AWS_338 # retention is deliberately short (7 days for viewer IPs, 30 for contact outcomes): privacy over history
+  - CKV_AWS_158 # log groups are encrypted at rest with AWS-managed keys; a CMK per group adds cost, not protection here
+  - CKV_AWS_76 # API Gateway access logs would duplicate CloudFront's /api/* logs and the Lambda's outcome log
+  # --- Lambda ---
+  - CKV_AWS_50 # X-Ray off: two tiny functions, logs already cover them
+  - CKV_AWS_117 # no VPC: the functions only call AWS APIs; a VPC would add NAT cost and no isolation benefit
+  - CKV_AWS_116 # synchronous (API) and scheduled invocations; a DLQ only applies to async event retries
+  - CKV_AWS_173 # env vars are encrypted with the AWS-managed key; the origin secret is not reachable without lambda:GetFunction
+  - CKV_AWS_272 # code signing needs a Signer profile; deploys come only from the approval-gated pipeline
+  - CKV_AWS_115 # reserved concurrency would carve from the account pool; API stage throttling caps the contact function
+  - CKV_AWS_309 # the contact route is public by design; the Lambda checks the CloudFront origin secret
+  # --- S3 ---
+  - CKV2_AWS_62 # no event-driven processing on these buckets
+  - CKV_AWS_18 # server access logs: the site is read through CloudFront (logged); state is read only by Terraform
+  - CKV_AWS_144 # cross-region replication: the site rebuilds from git, and state is versioned
+  - CKV_AWS_145 # SSE-S3 (AES-256) instead of KMS: no per-request KMS cost; access is controlled by bucket policy
+  # --- Route 53 ---
+  - CKV2_AWS_38 # DNSSEC not yet enabled (needs a KMS key and a DS record at the registrar); tracked as a follow-up
+  - CKV2_AWS_39 # DNS query logging: not needed for a static site's zone

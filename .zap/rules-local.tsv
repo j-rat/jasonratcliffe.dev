@@ -1,0 +1,18 @@
+10020	IGNORE	Anti-clickjacking header: added by CloudFront (checked in rules-prod)
+10021	IGNORE	X-Content-Type-Options: added by CloudFront (checked in rules-prod)
+10038	IGNORE	CSP header: added by CloudFront (checked in rules-prod)
+10063	IGNORE	Permissions-Policy: added by CloudFront (checked in rules-prod)
+10035	IGNORE	HSTS: preview is plain HTTP; CloudFront adds it
+90004	IGNORE	COEP: not used (no cross-origin isolation needed)
+10049	IGNORE	Cache directives come from the S3 upload, not the preview server
+10015	IGNORE	Cache directives come from the S3 upload, not the preview server
+10096	IGNORE	Timestamp disclosure: build-time numbers and the blog's example JWT expiry
+10202	IGNORE	Anti-CSRF token: contact form posts JSON; the API checks Origin and the CloudFront origin secret
+10110	FAIL	Dangerous JS functions (eval and friends)
+10023	FAIL	Debug error messages
+10062	FAIL	PII disclosure
+10024	FAIL	Sensitive information in URL
+10097	FAIL	Hash disclosure
+10055	FAIL	CSP problems (in meta tags or headers)
+10017	FAIL	Cross-domain JavaScript source file inclusion (CSP is self-only)
+10027	WARN	Suspicious comments

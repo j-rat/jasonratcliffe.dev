@@ -1,0 +1,6 @@
+# Scanner CLIs for .github/workflows/scan.yml. Regenerate (2-week age floor, hashes for the Linux runner):
+#   uv pip compile .github/security-tools/requirements.in --generate-hashes --python-version 3.13 \
+#     --python-platform x86_64-manylinux_2_28 --exclude-newer <14 days ago> -o .github/security-tools/requirements.txt
+semgrep
+checkov
+zizmor

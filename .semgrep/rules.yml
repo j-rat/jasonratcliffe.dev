@@ -1,0 +1,56 @@
+# Project rules: the hard rules in CLAUDE.md and spec/spec.json, as checks. ERROR blocks the deploy.
+rules:
+  - id: no-html-string-sinks
+    message: >-
+      Build DOM with text nodes (textContent, createElement). Values here can be attacker-controlled
+      (log lines, paths, user agents), and the CSP has no 'unsafe-inline' to fall back on.
+    severity: ERROR
+    languages: [javascript, typescript]
+    paths:
+      include: [site/src/, tools/log-viewer/public/, tools/log-viewer/lib/]
+    pattern-either:
+      - pattern: $EL.innerHTML = $V
+      - pattern: $EL.outerHTML = $V
+      - pattern: $EL.insertAdjacentHTML(...)
+      - pattern: document.write(...)
+      - pattern: document.writeln(...)
+
+  - id: no-astro-set-html
+    message: "set:html injects raw HTML. Render text instead (the site never needs raw HTML from data)."
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include: ["site/src/**/*.astro"]
+    pattern-regex: '\bset:html\s*='
+
+  - id: no-inline-style-attribute
+    message: "The CSP has no 'unsafe-inline' for styles, so a style attribute is blocked in production. Use a class."
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include: ["site/src/**/*.astro", "tools/log-viewer/public/*.html"]
+    pattern-regex: '<[a-zA-Z][^<>]*\sstyle\s*=\s*["''{]'
+
+  - id: no-inline-script
+    message: "Every <script> needs src= (no inline scripts under the CSP). In .astro files, a <script> Astro bundles is fine; is:inline is not."
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include: ["site/src/**/*.astro"]
+    pattern-regex: '<script\b[^>]*\bis:inline\b'
+
+  - id: edge-report-never-selects-viewer-ip
+    message: "The public edge report must never query c-ip (viewer IPs are for the admin viewer only, as /24 or /48 prefixes)."
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include: [infra/main/lambda/edge_report/handler.py, infra/main/lambda/edge_report/patterns.json]
+    pattern-regex: 'c-ip'
+
+  - id: no-cookies-or-xff-in-access-logs
+    message: "Keep x-forwarded-for and cs(Cookie) out of CloudFront record_fields."
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include: [infra/main/edge.tf]
+    pattern-regex: '"(?i:x-forwarded-for|cs\(cookie\))"'

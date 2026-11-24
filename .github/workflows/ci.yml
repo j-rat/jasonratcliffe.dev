@@ -1,5 +1,5 @@
-# Pull requests: build + PII scan the site, test the Lambda, lint Terraform,
-# and produce a Terraform plan with the read-only plan role.
+# Pull requests: build + PII scan the site, test the Lambda, lint Terraform, security scans (scan.yml),
+# dependency review, and a Terraform plan with the read-only plan role.
 name: ci
 
 on:
@@ -70,6 +70,23 @@ jobs:
             terraform -chdir=infra/$stack init -backend=false -input=false
             terraform -chdir=infra/$stack validate
           done
+
+  scan:
+    name: Security scans
+    uses: ./.github/workflows/scan.yml
+    permissions:
+      contents: read
+      security-events: write # declared for the shared workflow; this caller doesn't upload (sarif: false)
+    with:
+      sarif: false
+
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
 
   terraform-plan:
     name: Terraform plan (read-only role)

@@ -108,12 +108,19 @@ GitHub secrets in CI. Keys: `main/terraform.tfstate`, `bootstrap/terraform.tfsta
 touch `main/*`.
 
 **Workflows.**
-- `ci.yml` (PRs) runs: site build plus scan, Lambda tests, Terraform lint, and a plan whose summary lists
-  addresses and actions only.
+- `ci.yml` (PRs) runs: site build plus scan, Lambda tests, Terraform lint, security scans, dependency review,
+  and a plan whose summary lists addresses and actions only.
 - `deploy.yml` (main) runs `build`, which uploads the `site-dist` artifact, then a single approval-gated
   `deploy` job: terraform apply, then `s3 sync` (`_astro/` immutable for a year, without `--delete`; everything else
   `max-age=300` with `--delete`), invalidation, and live smoke tests.
+- `scan.yml` (reusable) holds the security scans: Semgrep (with project rules in `.semgrep/rules.yml`), Checkov
+  (accepted checks with reasons in `.checkov.yaml`), zizmor, TruffleHog, `npm audit`, and a ZAP baseline against a
+  local preview (`.zap/rules-*.tsv`). `deploy.yml` runs it beside `build`, and `deploy` needs both, so a blocking
+  finding stops the deploy. `security.yml` runs CodeQL on push/PR and a weekly sweep (full-history secrets, passive
+  ZAP against production). Never point an active ZAP scan at production. Runbook: `docs/DEPLOYMENT.md` part 14.
 - Actions are pinned to commit SHAs with a version comment. Keep that when bumping (Dependabot is configured).
+  The repo only allows GitHub-owned actions plus `hashicorp/setup-terraform` and `aws-actions/configure-aws-credentials`;
+  other tools run as checksum-verified binaries or digest-pinned containers.
 
 ## Admin log viewer (prototype)
 
