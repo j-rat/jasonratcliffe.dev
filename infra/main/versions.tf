@@ -31,6 +31,8 @@ provider "aws" {
       Project   = var.project
       ManagedBy = "terraform"
       Stack     = "main"
+      # Cost allocation tag: the admin log viewer shows only costs carrying it.
+      application = "resume"
     }
   }
 }

@@ -1,9 +1,15 @@
 # CloudFront access logs -> CloudWatch Logs -> daily summary Lambda -> s3://<origin>/data/edge-threats.json -> /edge/
-# Viewer IPs, X-Forwarded-For and cookies are never logged (record_fields), so they can't be published.
+# Cookies and X-Forwarded-For are never logged (record_fields). Viewer IPs (c-ip) are logged for admin
+# investigation only: kept 7 days, never selected by the edge report, and shown in the admin viewer only
+# as a network prefix (/24, /48). The report's 30-day history lives in the published JSON, not the logs.
+
+locals {
+  edge_log_retention_days = 7
+}
 
 resource "aws_cloudwatch_log_group" "edge_access" {
   name              = "/aws/vendedlogs/${var.project}-cloudfront"
-  retention_in_days = 30
+  retention_in_days = local.edge_log_retention_days
 }
 
 resource "aws_cloudwatch_log_delivery_source" "edge" {
@@ -25,7 +31,7 @@ resource "aws_cloudwatch_log_delivery" "edge" {
   delivery_source_name     = aws_cloudwatch_log_delivery_source.edge.name
   delivery_destination_arn = aws_cloudwatch_log_delivery_destination.edge.arn
   record_fields = [
-    "timestamp", "cs-method", "cs(Host)", "cs-uri-stem", "cs-uri-query",
+    "timestamp", "c-ip", "cs-method", "cs(Host)", "cs-uri-stem", "cs-uri-query",
     "sc-status", "cs(User-Agent)", "c-country", "x-edge-result-type",
   ]
 }
@@ -119,6 +125,8 @@ resource "aws_lambda_function" "edge_report" {
       BUCKET     = aws_s3_bucket.origin.id
       OBJECT_KEY = "data/edge-threats.json"
       SITE_HOST  = var.domain_name
+      # Days of access logs that exist; older days are never backfilled (they'd read as zero).
+      LOG_RETENTION_DAYS = local.edge_log_retention_days
       # Contact form defense counts (honeypot, rejected, invalid) for /edge/.
       CONTACT_LOG_GROUP = aws_cloudwatch_log_group.contact.name
     }

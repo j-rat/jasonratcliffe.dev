@@ -286,6 +286,20 @@ class ContactTests(unittest.TestCase):
         c = self.contact([crow("honeypot", day="2026-09-01"), crow("honeypot", day="garbage"), {"ev": "honeypot", "n": "x"}])
         self.assertEqual(c["totals"]["honeypot"], 0)
 
+    def test_older_api_counts_come_from_stored_history(self):
+        with mock.patch.object(handler, "LOG_RETENTION_DAYS", 7):
+            previous = [dict(p) for p in self.PREVIOUS]
+            for p in previous:
+                p["api"] = {"throttled": 2, "wrong_route": 1}
+            logs = ContactLogs([], [{"status": "429", "day": "2026-11-23 00:00:00.000", "n": "5"}])
+            c = handler.build_report(logs, "access", NOW, previous, contact_group="contact")["contact"]
+            api_query = next(q for q in logs.queries if q["queryString"] == handler.API_QUERY)
+            # The access-log query starts 6 days back (7 days including today), never before retention.
+            self.assertEqual(api_query["startTime"], int(dt.datetime(2026, 11, 17, tzinfo=dt.timezone.utc).timestamp()))
+            # 23 older days from history (2 each) + 5 from the logs today; days 11-17..11-22 come from the logs (none).
+            self.assertEqual(c["totals"]["throttled"], 23 * 2 + 5)
+            self.assertEqual(c["totals"]["wrong_route"], 23)
+
     def test_contact_failure_keeps_the_probe_report(self):
         logs = ContactLogs([], [], fail_contact=True)
         with mock.patch("builtins.print"):
@@ -295,6 +309,28 @@ class ContactTests(unittest.TestCase):
 
     def test_no_contact_group_means_no_section(self):
         self.assertIsNone(report([])["contact"])
+
+
+class RetentionAndIpTests(unittest.TestCase):
+    def test_backfill_stays_inside_log_retention(self):
+        with mock.patch.object(handler, "LOG_RETENTION_DAYS", 7):
+            logs = FakeLogs([], day_rows=[row("/.env")])
+            rep = handler.build_report(logs, "g", NOW, [])
+        days = [d["date"] for d in rep["daily"]]
+        self.assertEqual(days[0], "2026-11-17")  # 6 full days back; older days stay as gaps, not zeros
+        self.assertEqual(len(days), 6)
+
+    def test_api_counts_recorded_per_day(self):
+        rep = report([row("/api/contact", "429", n=3), row("/api/contact", "404", n=2), row("/api/contact", "400")],
+                     day_rows=[row("/api/contact", "429", n=4)])
+        self.assertEqual(rep["daily"][-1]["api"], {"throttled": 4})
+
+    def test_viewer_ip_never_published(self):
+        rows = [dict(row("/.env", ua="curl/8.4.0"), ip="203.0.113.77"), dict(row("/", "200"), ip="2001:db8::5")]
+        text = json.dumps(report(rows, day_rows=rows))
+        self.assertNotIn("203.0.113", text)
+        self.assertNotIn("2001:db8", text)
+        self.assertNotIn("c-ip", handler.QUERY)
 
 
 class QueryAndHandlerTests(unittest.TestCase):

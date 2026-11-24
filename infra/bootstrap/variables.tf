@@ -46,3 +46,9 @@ variable "create_github_oidc_provider" {
   type        = bool
   default     = true
 }
+
+variable "activate_cost_tag" {
+  description = "Activate the application cost allocation tag in Billing. Set true about 24 hours after the first apply that adds the tag: AWS refuses to activate a key it hasn't seen on any resource yet."
+  type        = bool
+  default     = false
+}

@@ -78,7 +78,7 @@ import Base from '../layouts/Base.astro';
     <section class="card how" aria-labelledby="how-h">
       <h2 id="how-h">How this works</h2>
       <ul>
-        <li>CloudFront delivers access logs to CloudWatch Logs. Viewer IP addresses, forwarded-for headers and cookies are excluded at the source, so they are never stored.</li>
+        <li>CloudFront delivers access logs to CloudWatch Logs. Cookies and forwarded-for headers are never recorded. Viewer IP addresses are kept for 7 days for investigating abuse, are never published here, and the private admin view shows them only as network prefixes.</li>
         <li>Once a day a Lambda function runs a Logs Insights query, sorts requests into categories from a versioned pattern file, and publishes a summary to this site.</li>
         <li>Only paths that matched a probe pattern are shown, shortened, with emails redacted and unsafe characters encoded. Query strings are never published.</li>
         <li>Contact form counts come from the form handler’s outcome logs (honeypot, rejected, invalid) and the edge logs for <code>/api/*</code> (throttled, wrong route). Deploy smoke tests and real messages are left out.</li>

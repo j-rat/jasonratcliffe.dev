@@ -6,8 +6,8 @@ mapped to MITRE ATT&CK (patterns.json) and publishes data/edge-threats.json to t
 Also counts the contact form's defenses over 30 days (honeypot catches, rejected origins, bad input from
 the contact Lambda's outcome logs; throttling and wrong routes from the access logs).
 
-Never published: viewer IPs (not even logged), query strings, any path that didn't match a probe
-pattern, and the number of real messages sent. Published paths have emails redacted, unsafe characters
+Never published: viewer IPs (logged for 7 days for admin use, but never selected here), query strings,
+any path that didn't match a probe pattern, and the number of real messages sent. Published paths have emails redacted, unsafe characters
 percent-encoded and are truncated.
 """
 
@@ -51,6 +51,7 @@ TOP_COUNTRIES = 10
 MAX_PATH = 80
 QUERY_TIMEOUT_S = 25
 MIN_TIME_LEFT_MS = 30_000
+LOG_RETENTION_DAYS = int(os.environ.get("LOG_RETENTION_DAYS", "30"))
 
 EMAIL = re.compile(r"[^/@\s]+@[^/@\s]+\.[a-z]{2,}", re.I)
 STATUS = re.compile(r"^\d{3}$")
@@ -122,6 +123,7 @@ def summarize(rows):
         "requests": 0, "probes": 0,
         "by_category": Counter(), "statuses": {}, "probe_statuses": Counter(),
         "paths": Counter(), "path_category": {}, "families": Counter(), "countries": Counter(),
+        "api": Counter(),
     }
     for r in rows:
         if r.get("ua") == SELF_UA:
@@ -131,6 +133,9 @@ def summarize(rows):
         except ValueError:
             continue
         s["requests"] += n
+        key = api_key(r.get("path", ""), r.get("status", ""))
+        if key:
+            s["api"][key] += n
         cat, show_path, fam = classify(r.get("path", ""), r.get("query", ""), r.get("ua", ""))
         if not cat:
             continue
@@ -180,14 +185,25 @@ def fetch_previous(host):
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read(1_000_000))
         daily = data["daily"] if data.get("version") == 1 else []
-        return [
+        out = [
             d for d in daily
             if isinstance(d, dict) and DAY.match(str(d.get("date", "")))
             and isinstance(d.get("requests"), int) and isinstance(d.get("probes"), int)
             and isinstance(d.get("by_category"), dict)
         ]
+        for d in out:
+            api = d.get("api")
+            d["api"] = {k: v for k, v in api.items() if k in ("throttled", "wrong_route") and isinstance(v, int)} if isinstance(api, dict) else {}
+        return out
     except Exception:
         return []
+
+
+def api_key(path, status):
+    """Contact form traffic the access logs see: throttled (429) or a wrong route or method (404/405)."""
+    if not str(path).startswith("/api/"):
+        return None
+    return "throttled" if status == "429" else "wrong_route" if status in ("404", "405") else None
 
 
 def contact_key(ev, reason):
@@ -200,7 +216,7 @@ def contact_key(ev, reason):
     return None  # sent, send-failed, smoke-test, anything unknown: never published
 
 
-def build_contact(logs, contact_group, access_group, now):
+def build_contact(logs, contact_group, access_group, now, stored_daily=None):
     """30-day counts of the contact form's defenses, one entry per UTC day, oldest first."""
     today = now.date()
     days = [today - dt.timedelta(days=i) for i in range(TREND_DAYS - 1, -1, -1)]
@@ -221,7 +237,15 @@ def build_contact(logs, contact_group, access_group, now):
                 reason = r.get("reason", "")
                 reasons[reason if REASON.match(reason) else "other"] += n
 
-    rows, _ = run_query(logs, access_group, start, now, API_QUERY)
+    # Access logs only go back LOG_RETENTION_DAYS; older days come from the published daily history.
+    in_logs = [d for d in days if d > today - dt.timedelta(days=LOG_RETENTION_DAYS)]
+    for d in days:
+        if d not in in_logs:
+            stored = (stored_daily or {}).get(d.isoformat(), {}).get("api", {})
+            for key in ("throttled", "wrong_route"):
+                daily[d.isoformat()][key] += stored.get(key, 0) if isinstance(stored.get(key), int) else 0
+    api_start = dt.datetime.combine(in_logs[0], dt.time.min, tzinfo=dt.timezone.utc)
+    rows, _ = run_query(logs, access_group, api_start, now, API_QUERY)
     for r in rows:
         day, status = r.get("day", "")[:10], r.get("status", "")
         key = "throttled" if status == "429" else "wrong_route" if status in ("404", "405") else None
@@ -246,6 +270,7 @@ def day_entry(date, s, truncated):
         "requests": s["requests"],
         "probes": s["probes"],
         "by_category": dict(s["by_category"]),
+        "api": dict(s["api"]),
         "truncated": truncated,
     }
 
@@ -259,7 +284,8 @@ def build_report(logs, group, now, previous_daily, time_left_ms=lambda: 10**9, c
     oldest = today - dt.timedelta(days=TREND_DAYS)
     daily = {d["date"]: d for d in previous_daily if d["date"] >= oldest.isoformat() and d["date"] < today.isoformat()}
     missing = [today - dt.timedelta(days=i) for i in range(1, TREND_DAYS + 1)]
-    missing = [d for d in missing if d.isoformat() not in daily][:BACKFILL_PER_RUN]
+    # Days older than the log retention would query as empty and look like zero traffic: leave them as gaps.
+    missing = [d for d in missing if d.isoformat() not in daily and d > today - dt.timedelta(days=LOG_RETENTION_DAYS)][:BACKFILL_PER_RUN]
     for day in missing:
         if time_left_ms() < MIN_TIME_LEFT_MS:
             break
@@ -277,7 +303,7 @@ def build_report(logs, group, now, previous_daily, time_left_ms=lambda: 10**9, c
     contact = None
     if contact_group:
         try:
-            contact = build_contact(logs, contact_group, group, now)
+            contact = build_contact(logs, contact_group, group, now, daily)
         except Exception as e:  # noqa: BLE001 - the probe report still publishes; the page hides the section
             print(json.dumps({"outcome": "contact-stats-failed", "error": type(e).__name__}))
 

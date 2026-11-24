@@ -4,3 +4,6 @@ github_repository = "your-github-user/jasonratcliffe.dev"
 # github_environment = "production"
 # github_ids = { owner = 12345678, repository = 123456789 }  # only if the repo uses immutable OIDC subjects (guide 5.4)
 # create_github_oidc_provider = false   # if the account already has the GitHub OIDC provider
+
+# Set true ~24h after the first apply that adds the application = resume tag (see DEPLOYMENT.md part 11).
+# activate_cost_tag = true
