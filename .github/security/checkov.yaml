@@ -38,5 +38,4 @@ skip-check:
   - CKV_AWS_144 # cross-region replication: the site rebuilds from git, and state is versioned
   - CKV_AWS_145 # SSE-S3 (AES-256) instead of KMS: no per-request KMS cost; access is controlled by bucket policy
   # --- Route 53 ---
-  - CKV2_AWS_38 # DNSSEC not yet enabled (needs a KMS key and a DS record at the registrar); tracked as a follow-up
   - CKV2_AWS_39 # DNS query logging: not needed for a static site's zone

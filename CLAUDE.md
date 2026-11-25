@@ -11,7 +11,7 @@ Resume site for jasonratcliffe.dev. It has three parts:
 
 `spec/spec.json` is the agreed build spec. Each must-have has an acceptance test, plus there are
 `reject_if` lines. If a change conflicts with it, point at the line and confirm with the user before
-diverging. `docs/DEPLOYMENT.md` is the operator runbook. Keep it in sync when workflows, secrets,
+diverging. `docs/SETUP.md` (one-time setup) and `docs/RUNBOOK.md` (operations) are the operator docs. Keep them in sync when workflows, secrets,
 outputs or resource counts change.
 
 ## Commands
@@ -33,14 +33,15 @@ Terraform is installed via Homebrew (`/opt/homebrew/bin/terraform`). CI pins 1.1
 ## Hard rules
 
 - **No personal contact data anywhere committable or built.** No email, phone, street address or ZIP.
-  The source `.docx` is git-ignored and must stay that way. `site/scripts/pii-scan.mjs` matches known
+  The source `.docx` lives in git-ignored `private/` and must stay out of git. `site/scripts/pii-scan.mjs` matches known
   values by salted SHA-256, plus generic regexes. Never weaken it to make a build pass; change the
   content instead.
 - **No AWS account IDs, ARNs or real resource names in site content.** The architecture page uses
   generic labels. Terraform outputs naming resources are `sensitive`, and workflows mask them and never
   print plan/apply output (only resource addresses go to the job summary).
 - **CSP has no `'unsafe-inline'`** (`infra/main/cdn.tf` `local.csp`). Don't add inline `<script>`, `style=""`
-  attributes or third-party origins. Astro is configured to keep scripts and CSS external
+  attributes or third-party origins. Pages also send `Cross-Origin-Embedder-Policy: require-corp`, so any
+  cross-origin resource would break; the PDF behavior omits COEP and CSP. Astro is configured to keep scripts and CSS external
   (`inlineStylesheets: 'never'`, `assetsInlineLimit: 0`), and Markdown uses Prism (classes) rather than Shiki
   (inline styles). After site changes, check with `grep -o '<script[^>]*>' site/dist/index.html` (every
   tag needs `src=`) and `grep -rl 'style="' site/dist`.
@@ -108,16 +109,22 @@ GitHub secrets in CI. Keys: `main/terraform.tfstate`, `bootstrap/terraform.tfsta
 touch `main/*`.
 
 **Workflows.**
-- `ci.yml` (PRs) runs: site build plus scan, Lambda tests, Terraform lint, security scans, dependency review,
-  and a plan whose summary lists addresses and actions only.
-- `deploy.yml` (main) runs `build`, which uploads the `site-dist` artifact, then a single approval-gated
-  `deploy` job: terraform apply, then `s3 sync` (`_astro/` immutable for a year, without `--delete`; everything else
-  `max-age=300` with `--delete`), invalidation, and live smoke tests.
-- `scan.yml` (reusable) holds the security scans: Semgrep (with project rules in `.semgrep/rules.yml`), Checkov
-  (accepted checks with reasons in `.checkov.yaml`), zizmor, TruffleHog, `npm audit`, and a ZAP baseline against a
-  local preview (`.zap/rules-*.tsv`). `deploy.yml` runs it beside `build`, and `deploy` needs both, so a blocking
-  finding stops the deploy. `security.yml` runs CodeQL on push/PR and a weekly sweep (full-history secrets, passive
-  ZAP against production). Never point an active ZAP scan at production. Runbook: `docs/DEPLOYMENT.md` part 14.
+- `checks.yml` (reusable) is everything before approval: site build + PII scan (uploads `site-dist`), Lambda tests,
+  Terraform lint, and a read-only plan (plan role, trusted for PRs and `main`) whose summary lists addresses/actions
+  and the site files that would change (`.github/scripts/site-diff.sh`). It outputs a fingerprint of the planned
+  changes (`.github/scripts/plan-changes.sh`). The plan file holds secrets and the repo is public, so it never leaves the job.
+- `ci.yml` (PRs) calls `checks.yml` and `scan.yml`, plus dependency review.
+- `deploy.yml` (main) calls both, then a single approval-gated `deploy` job (environment `production` with a URL):
+  re-plans and applies only if the fingerprint matches the approved one (skips Terraform when the plan was empty),
+  then `s3 sync` (`_astro/` immutable for a year, without `--delete`; everything else `max-age=300` with `--delete`),
+  edge report, invalidation, a deploy summary table, and `.github/scripts/smoke-test.sh` (runs every check, pass/fail table).
+- `scan.yml` (reusable) holds the security scans: CodeQL, Semgrep, Checkov, zizmor, TruffleHog, `npm audit`, and a ZAP
+  baseline against a local preview. Configs are in `.github/security/` (`semgrep-rules.yml`, `checkov.yaml` with a
+  reason per skip, `zap-*.tsv`, `codeql.yml`, the hash-pinned `requirements.txt`). A blocking finding stops the deploy.
+  `security.yml` is the weekly sweep (full-history secrets, passive ZAP against production). Never point an active
+  ZAP scan at production. Runbook: `docs/RUNBOOK.md` section 9.
+- Alarms (`infra/main/alarms.tf`) email the contact inbox via SNS; DNSSEC signing is in `infra/bootstrap/dnssec.tf`
+  (the DS record at the registrar is a manual, last step; `docs/RUNBOOK.md` section 6).
 - Actions are pinned to commit SHAs with a version comment. Keep that when bumping (Dependabot is configured).
   The repo only allows GitHub-owned actions plus `hashicorp/setup-terraform` and `aws-actions/configure-aws-credentials`;
   other tools run as checksum-verified binaries or digest-pinned containers.

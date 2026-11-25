@@ -1,6 +1,7 @@
 # Security scans, shared by deploy.yml (blocks the deploy), ci.yml (pull requests) and security.yml (weekly).
-# None of these jobs can reach AWS: no id-token, read-only contents.
+# None of these jobs can reach AWS: no id-token, read-only contents. Configs live in .github/security/.
 #
+#   codeql   CodeQL (JS/TS, Python, Actions); results always go to the Security tab
 #   static   Semgrep (SAST + project rules), Checkov (Terraform/Actions), zizmor (workflow security)
 #   secrets  TruffleHog over the new commits (or full history), blocking on verified/unknown secrets
 #   deps     npm audit, blocking on high/critical
@@ -32,6 +33,29 @@ env:
   ZAP_IMAGE: ghcr.io/zaproxy/zaproxy@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af
 
 jobs:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, python, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          config-file: .github/security/codeql.yml
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: codeql-${{ matrix.language }}
+
   static:
     name: SAST + IaC + workflow scan
     runs-on: ubuntu-latest
@@ -46,14 +70,14 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Install scanners (hash-pinned)
-        run: python -m pip install --quiet --require-hashes --no-deps -r .github/security-tools/requirements.txt
+        run: python -m pip install --quiet --require-hashes --no-deps -r .github/security/requirements.txt
 
       - name: Semgrep
         id: semgrep
         continue-on-error: true
         run: |
           semgrep scan --metrics=off --disable-version-check --quiet \
-            --config p/default --config p/github-actions --config .semgrep/rules.yml \
+            --config p/default --config p/github-actions --config .github/security/semgrep-rules.yml \
             --exclude site/dist --sarif --output semgrep.sarif
           # SARIF puts severity on the rule; findings marked nosemgrep carry a suppression and don't count.
           findings='(.runs[0].tool.driver.rules | map({(.id): .defaultConfiguration.level}) | add) as $lv
@@ -69,8 +93,8 @@ jobs:
       - name: Checkov
         id: checkov
         continue-on-error: true
-        # Accepted checks and their reasons live in .checkov.yaml; anything else that fails blocks.
-        run: checkov --config-file .checkov.yaml --output cli --output sarif --output-file-path console,checkov.sarif
+        # Accepted checks and their reasons live in .github/security/checkov.yaml; anything else that fails blocks.
+        run: checkov --config-file .github/security/checkov.yaml --output cli --output sarif --output-file-path console,checkov.sarif
 
       - name: zizmor
         id: zizmor
@@ -100,15 +124,26 @@ jobs:
           sarif_file: zizmor.sarif
           category: zizmor
 
-      - name: Fail on blocking findings
-        if: steps.semgrep.outcome != 'success' || steps.checkov.outcome != 'success' || steps.zizmor.outcome != 'success'
+      - name: Result
+        if: always()
         env:
           SEMGREP: ${{ steps.semgrep.outcome }}
           CHECKOV: ${{ steps.checkov.outcome }}
           ZIZMOR: ${{ steps.zizmor.outcome }}
         run: |
-          echo "::error::Blocking findings - semgrep: $SEMGREP, checkov: $CHECKOV, zizmor: $ZIZMOR"
-          exit 1
+          {
+            echo "### Static scans"
+            echo "| Scanner | Result |"
+            echo "|---|---|"
+            for pair in "Semgrep:$SEMGREP" "Checkov:$CHECKOV" "zizmor:$ZIZMOR"; do
+              r=${pair#*:}; [ "$r" = success ] && r="✅ pass" || r="❌ $r"
+              echo "| ${pair%%:*} | $r |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$SEMGREP$CHECKOV$ZIZMOR" != successsuccesssuccess ]; then
+            echo "::error::Blocking findings - semgrep: $SEMGREP, checkov: $CHECKOV, zizmor: $ZIZMOR"
+            exit 1
+          fi
 
   secrets:
     name: Secret scan (TruffleHog)
@@ -194,15 +229,15 @@ jobs:
           for _ in $(seq 1 60); do curl -sf -o /dev/null http://localhost:4321/ && exit 0; sleep 1; done
           cat ../preview.log; exit 1
       - name: ZAP baseline (passive)
-        # Headers are CloudFront's job, so .zap/rules-local.tsv ignores them here; the weekly production scan checks them.
+        # Headers are CloudFront's job, so zap-local.tsv ignores them here; the weekly production scan checks them.
         run: |
-          mkdir -p zap && chmod 777 zap && cp .zap/rules-local.tsv zap/rules.tsv
+          mkdir -p zap && chmod 777 zap && cp .github/security/zap-local.tsv zap/rules.tsv
           rc=0
           docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" "$ZAP_IMAGE" \
             zap-baseline.py -t http://localhost:4321/ -c rules.tsv -m 2 -I -J report.json -r report.html | tee zap/out.txt || rc=${PIPESTATUS[0]}
           {
             echo "### ZAP baseline (local preview)"
-            echo "Rules marked IGNORE in .zap/ are left out; FAIL lines are what blocks."
+            echo "Rules marked IGNORE in .github/security/zap-local.tsv are left out; FAIL lines are what blocks."
             echo '```'
             grep -E '^(FAIL|WARN)' zap/out.txt || echo "no report"
             echo '```'

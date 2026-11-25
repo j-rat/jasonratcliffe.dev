@@ -11,10 +11,10 @@ MITRE ATT&CK and charts what the contact form's honeypot and API defenses blocke
 
 ```text
 site/             Astro site (content lives in site/src/data/resume.ts)
-infra/bootstrap/  one-time: state bucket, Route 53 zone, GitHub OIDC roles, permissions boundary
-infra/main/       CloudFront, private S3 origin, ACM, DNS, SES, contact API + Lambda
-.github/          ci.yml (PR checks + read-only plan), deploy.yml (approval-gated apply + publish)
-docs/             DEPLOYMENT.md: step-by-step GitHub Actions deployment
+infra/bootstrap/  one-time: state bucket, Route 53 zone + DNSSEC, GitHub OIDC roles, permissions boundary
+infra/main/       CloudFront, private S3 origin, ACM, DNS, SES, contact API + Lambda, edge report, alarms
+.github/          workflows (checks, security scans, approval-gated deploy), scripts, scanner configs
+docs/             SETUP.md (first deploy, step by step) and RUNBOOK.md (day-to-day operations)
 spec/             build spec and acceptance tests
 ```
 
@@ -24,8 +24,8 @@ make dev       # http://localhost:4321
 make check     # build + PDF + PII scan, Lambda tests, terraform fmt/validate
 ```
 
-To deploy, follow **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+To set it up, follow **[docs/SETUP.md](docs/SETUP.md)**. After that, **[docs/RUNBOOK.md](docs/RUNBOOK.md)**.
 
-> The source resume (`*.docx`) contains personal contact details and is git-ignored. The build fails if
+> The source resume (`*.docx`, kept in `private/`) contains personal contact details and is git-ignored. The build fails if
 > an email address, phone number, street address or AWS account ID appears in the site, the PDF, or any
 > committable file.

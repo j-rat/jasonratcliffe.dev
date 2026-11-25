@@ -38,7 +38,7 @@ lint: ## terraform fmt + validate (no AWS access needed)
 
 check: build test lint ## Everything CI checks before planning
 
-# --- one-time bootstrap (docs/DEPLOYMENT.md, part 2) -------------------------
+# --- one-time bootstrap (docs/SETUP.md, part 3) ------------------------------
 
 bootstrap-init: ## Init bootstrap with local state
 	$(TF) -chdir=$(BOOT) init

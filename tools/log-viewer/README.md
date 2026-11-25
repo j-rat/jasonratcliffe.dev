@@ -60,7 +60,7 @@ resource through the provider's `default_tags`.
 
 - **Activate the tag first.** Cost Explorer can only filter on an *active* cost allocation tag. About 24 hours
   after the tag first reaches AWS, set `activate_cost_tag = true` in `infra/bootstrap/terraform.tfvars` and
-  apply bootstrap (see DEPLOYMENT.md part 11). Until then the view says the tag isn't active and totals are $0.
+  apply bootstrap (see docs/RUNBOOK.md section 7). Until then the view says the tag isn't active and totals are $0.
 - **Not everything is taggable.** Charges with no resource behind them (Cost Explorer API calls, tax, some
   per-request fees) never carry the tag, so they're excluded by design.
 - **It costs money to look.** Cost Explorer bills $0.01 per API request. A refresh makes 3 requests, results

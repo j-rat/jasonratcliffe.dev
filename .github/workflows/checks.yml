@@ -1,0 +1,177 @@
+# Everything that runs before the production approval, shared by ci.yml (pull requests) and deploy.yml (main):
+#
+#   site    astro check, build, PDF, PII scan; uploads site-dist
+#   lambda  unit tests for the contact and edge-report functions
+#   lint    terraform fmt + validate, both stacks
+#   plan    terraform plan with the read-only plan role, plus the site files a publish would change.
+#           Its summary is what you read before approving. deploy.yml re-plans and refuses to apply
+#           anything different (the plan file holds secrets, so it never leaves this job).
+name: checks
+
+on:
+  workflow_call:
+    secrets:
+      AWS_PLAN_ROLE_ARN: { required: true }
+      TF_STATE_BUCKET: { required: true }
+      CONTACT_TO_EMAIL: { required: true }
+    outputs:
+      tf_changes:
+        description: Number of resources the plan adds, changes or destroys
+        value: ${{ jobs.plan.outputs.tf_changes }}
+      tf_fingerprint:
+        description: SHA-256 of the planned (address, actions) list
+        value: ${{ jobs.plan.outputs.tf_fingerprint }}
+      site_changes:
+        description: One-line count of new, changed and removed site files
+        value: ${{ jobs.plan.outputs.site_changes }}
+
+permissions:
+  contents: read
+
+env:
+  TF_VERSION: 1.16.6
+  NODE_VERSION: 24
+  AWS_REGION: us-east-1
+
+jobs:
+  site:
+    name: Site build + PII scan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx astro check
+      # build = astro build + PDF render + PII scan (fails on any email/phone/address/account ID)
+      - run: npm run build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site-dist
+          path: site/dist
+          retention-days: 7
+          if-no-files-found: error
+          include-hidden-files: true # .well-known/security.txt
+
+  lambda:
+    name: Lambda tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - run: for d in contact edge_report; do (cd "infra/main/lambda/$d" && python -m unittest -v); done
+
+  lint:
+    name: Terraform fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive -diff infra
+      - name: validate
+        run: |
+          for stack in bootstrap main; do
+            terraform -chdir=infra/$stack init -backend=false -input=false
+            terraform -chdir=infra/$stack validate
+          done
+
+  plan:
+    name: Terraform plan + site changes (read-only)
+    runs-on: ubuntu-latest
+    needs: [site, lint]
+    # Secrets aren't available to pull requests from forks; skip instead of failing.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      id-token: write # OIDC token for the read-only plan role
+    concurrency:
+      group: terraform-state
+      cancel-in-progress: false
+    outputs:
+      tf_changes: ${{ steps.plan.outputs.changes }}
+      tf_fingerprint: ${{ steps.plan.outputs.fingerprint }}
+      site_changes: ${{ steps.files.outputs.summary }}
+    env:
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: 'false'
+      TF_VAR_contact_to_email: ${{ secrets.CONTACT_TO_EMAIL }}
+    defaults:
+      run:
+        working-directory: infra/main
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          role-session-name: gha-plan-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: terraform init
+        run: >
+          terraform init
+          -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}"
+          -backend-config="region=${{ env.AWS_REGION }}"
+          -backend-config="encrypt=true"
+          -backend-config="use_lockfile=true"
+      - name: terraform plan
+        id: plan
+        # Full plan output contains ARNs and resource names, so it is never printed.
+        # Only resource addresses and actions go to the summary.
+        run: |
+          terraform plan -lock-timeout=5m -out=tfplan -no-color > plan.log 2>&1 || { tail -n 40 plan.log | sed -E 's/[0-9]{12}/************/g'; exit 1; }
+          ../../.github/scripts/plan-changes.sh tfplan > changes.json
+          n=$(jq length changes.json)
+          echo "changes=$n" >> "$GITHUB_OUTPUT"
+          echo "fingerprint=$(sha256sum < changes.json | cut -c1-64)" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Terraform plan"
+            if [ "$n" -eq 0 ]; then
+              echo "No infrastructure changes. The deploy will skip Terraform."
+            else
+              echo
+              echo '| Action | Resource |'
+              echo '|---|---|'
+              jq -r '.[] | "| \(.[1] | join(", ")) | `\(.[0])` |"' changes.json
+              echo
+              grep -E '^Plan:' plan.log || true
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f plan.log tfplan changes.json
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-dist
+          path: ${{ github.workspace }}/dist
+      - name: Site files a publish would change
+        id: files
+        run: |
+          bucket=$(terraform output -raw site_bucket 2>/dev/null || true)
+          if [ -z "$bucket" ]; then
+            echo "summary=site not deployed yet" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::add-mask::$bucket"  # nosemgrep: yaml.github-actions.security.audit.unsafe-add-mask-workflow-command.unsafe-add-mask-workflow-command
+          ../../.github/scripts/site-diff.sh "$GITHUB_WORKSPACE/dist" "$bucket"

@@ -29,7 +29,7 @@ updates:
   # Scanner CLIs (hash-pinned pip-compile lock). The ZAP image digest and the TruffleHog version in
   # .github/workflows/scan.yml are bumped by hand.
   - package-ecosystem: pip
-    directory: /.github/security-tools
+    directory: /.github/security
     schedule: { interval: weekly }
     cooldown: { default-days: 14 }
     groups:

@@ -1,5 +1,10 @@
-# main branch: test + build and security scans in parallel, then ONE approval-gated job (environment: production)
-# that applies Terraform, publishes the site to S3, invalidates CloudFront and smoke-tests the live site.
+# main branch:
+#   checks  (checks.yml)  build, tests, lint, then a read-only Terraform plan and the list of site files that
+#                         would change. Read its summary before approving.
+#   scan    (scan.yml)    security scans; a blocking finding stops the deploy before the approval gate.
+#   deploy                ONE approval-gated job (environment: production). Applies Terraform only if the plan
+#                         had changes, and only if a fresh plan matches the one you approved; then publishes to
+#                         S3, invalidates CloudFront and smoke-tests the live site.
 name: deploy
 
 on:
@@ -16,46 +21,23 @@ concurrency:
 
 env:
   TF_VERSION: 1.16.6
-  NODE_VERSION: 24
   AWS_REGION: us-east-1
   SITE_DOMAIN: jasonratcliffe.dev
 
 jobs:
-  build:
-    name: Build + PII scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: site/package-lock.json
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.13'
-      - name: Lambda unit tests
-        run: for d in contact edge_report; do (cd "infra/main/lambda/$d" && python -m unittest -v); done
-      - run: npm ci
-        working-directory: site
-      - run: npx playwright install --with-deps chromium
-        working-directory: site
-      - run: npm run build
-        working-directory: site
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: site-dist
-          path: site/dist
-          retention-days: 7
-          if-no-files-found: error
-          include-hidden-files: true # .well-known/security.txt
+  checks:
+    name: Checks
+    uses: ./.github/workflows/checks.yml
+    secrets:
+      AWS_PLAN_ROLE_ARN: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+      TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+      CONTACT_TO_EMAIL: ${{ secrets.CONTACT_TO_EMAIL }}
+    permissions:
+      contents: read
+      id-token: write
 
   scan:
     name: Security scans
-    # SAST, IaC, workflow, secret, dependency and DAST checks (.github/workflows/scan.yml). Blocking findings stop
-    # the deploy before it reaches the approval gate.
     uses: ./.github/workflows/scan.yml
     permissions:
       contents: read
@@ -64,10 +46,12 @@ jobs:
       sarif: true
 
   deploy:
-    name: Terraform apply + publish
+    name: Apply + publish
     runs-on: ubuntu-latest
-    needs: [build, scan]
-    environment: production
+    needs: [checks, scan]
+    environment:
+      name: production
+      url: https://jasonratcliffe.dev/
     permissions:
       contents: read
       id-token: write
@@ -78,6 +62,9 @@ jobs:
       TF_IN_AUTOMATION: 'true'
       TF_INPUT: 'false'
       TF_VAR_contact_to_email: ${{ secrets.CONTACT_TO_EMAIL }}
+      TF_CHANGES: ${{ needs.checks.outputs.tf_changes }}
+      APPROVED_FINGERPRINT: ${{ needs.checks.outputs.tf_fingerprint }}
+      SITE_CHANGES: ${{ needs.checks.outputs.site_changes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -100,21 +87,20 @@ jobs:
           -backend-config="region=${{ env.AWS_REGION }}"
           -backend-config="encrypt=true"
           -backend-config="use_lockfile=true"
-      - name: terraform plan
+      - name: terraform apply (the approved plan only)
+        id: apply
+        if: env.TF_CHANGES != '0'
         working-directory: infra/main
         run: |
+          test -n "$APPROVED_FINGERPRINT" || { echo "::error::No approved plan from the checks job."; exit 1; }
           terraform plan -lock-timeout=5m -out=tfplan -no-color > plan.log 2>&1 || { tail -n 40 plan.log | sed -E 's/[0-9]{12}/************/g'; exit 1; }
-          {
-            echo "### Terraform changes applied"
-            echo
-            terraform show -json tfplan | jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | "- \(.change.actions | join(", ")) `\(.address)`"'
-            grep -E '^(Plan:|No changes)' plan.log || true
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: terraform apply
-        working-directory: infra/main
-        run: |
+          now=$(../../.github/scripts/plan-changes.sh tfplan | sha256sum | cut -c1-64)
+          if [ "$now" != "$APPROVED_FINGERPRINT" ]; then
+            echo "::error::The plan changed after approval (state or main moved). Nothing was applied. Re-run the workflow to plan and approve again."
+            exit 1
+          fi
           terraform apply -lock-timeout=5m -no-color tfplan > apply.log 2>&1 || { tail -n 40 apply.log | sed -E 's/[0-9]{12}/************/g'; exit 1; }
-          grep -E '^Apply complete' apply.log
+          grep -E '^Apply complete' apply.log | tee -a "$GITHUB_STEP_SUMMARY"
           rm -f apply.log plan.log tfplan
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -143,52 +129,48 @@ jobs:
           aws s3 sync dist "s3://$SITE_BUCKET" --delete --exclude "_astro/*" --exclude "data/*" \
             --cache-control "public,max-age=300,must-revalidate" --only-show-errors
       - name: Refresh edge report
+        id: edge
         # Runs before the invalidation so the fresh data/edge-threats.json is served right away.
         # A failure only warns: the site is already published and the daily schedule retries.
         run: |
           if aws lambda invoke --function-name "$EDGE_REPORT_FUNCTION" --payload '{}' \
                --cli-binary-format raw-in-base64-out --query FunctionError --output text edge-report.json > invoke.txt \
              && ! grep -qv '^None$' invoke.txt; then
-            echo "Edge report refreshed."
+            echo "result=refreshed" >> "$GITHUB_OUTPUT"
           else
+            echo "result=failed (previous data kept; the daily run retries)" >> "$GITHUB_OUTPUT"
             echo "::warning::Edge report Lambda failed; /edge/ keeps the previous data until the daily run."
           fi
           rm -f edge-report.json invoke.txt
       - name: Invalidate CloudFront
+        id: invalidate
         run: |
+          start=$SECONDS
           id=$(aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths '/*' --query Invalidation.Id --output text)
           echo "::add-mask::$id"  # nosemgrep: yaml.github-actions.security.audit.unsafe-add-mask-workflow-command.unsafe-add-mask-workflow-command
           aws cloudfront wait invalidation-completed --distribution-id "$DISTRIBUTION_ID" --id "$id"
-      - name: Smoke test
+          echo "seconds=$((SECONDS - start))" >> "$GITHUB_OUTPUT"
+      - name: Deploy summary
+        env:
+          APPLY: ${{ steps.apply.outcome }}
+          EDGE: ${{ steps.edge.outputs.result }}
+          INVALIDATION_SECONDS: ${{ steps.invalidate.outputs.seconds }}
+          COMMIT: ${{ github.sha }}
         run: |
-          set -euo pipefail
-          url="https://$SITE_DOMAIN"
-          headers=$(curl -sfI "$url/")
-          for h in strict-transport-security content-security-policy x-content-type-options referrer-policy permissions-policy x-frame-options; do
-            echo "$headers" | grep -qi "^$h:" || { echo "missing header: $h"; exit 1; }
-          done
-          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/resume.pdf")" = 200
-          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/architecture/")" = 200
-          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/edge/")" = 200
-          if [ "$(curl -s -o edge.json -w '%{http_code}' "$url/data/edge-threats.json")" = 200 ]; then
-            jq -e '.version == 1' edge.json > /dev/null
-          else
-            echo "::warning::data/edge-threats.json not published yet"
-          fi
-          rm -f edge.json
-          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/.well-known/security.txt")" = 200
-          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/does-not-exist")" = 404
-          test "$(curl -s -o /dev/null -w '%{redirect_url}' "https://www.$SITE_DOMAIN/blog/")" = "$url/blog/"
-          test "$(curl -s -o /dev/null -w '%{http_code}' "http://$SITE_DOMAIN/")" = 301
-          # The bucket must not be reachable directly.
-          test "$(curl -s -o /dev/null -w '%{http_code}' "https://$SITE_BUCKET.s3.amazonaws.com/index.html")" = 403
-          # The API answers through CloudFront: the smoke-test body gets a 400 and is logged as "smoke-test",
-          # so it isn't counted as rejected input on /edge/.
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "Origin: $url" -d '{"smoke_test":true}' "$url/api/contact")" = 400
-          if [ "$(curl -s -o edge.json -w '%{http_code}' "$url/data/edge-threats.json")" = 200 ]; then
-            jq -e '.contact == null or (.contact.totals | has("honeypot"))' edge.json > /dev/null \
-              || echo "::warning::edge report has no valid contact block"
-            jq -e '.contact == null or (.contact | tostring | test("sent") | not)' edge.json > /dev/null
-          fi
-          rm -f edge.json
-          echo "### Live checks passed for $url" >> "$GITHUB_STEP_SUMMARY"
+          case "$APPLY" in
+            success) tf="applied $TF_CHANGES change(s), matching the approved plan" ;;
+            skipped) tf="no changes, skipped" ;;
+            *)       tf="$APPLY" ;;
+          esac
+          {
+            echo "### Deployed ${COMMIT:0:7} to https://$SITE_DOMAIN/"
+            echo
+            echo "| Step | Result |"
+            echo "|---|---|"
+            echo "| Terraform | $tf |"
+            echo "| Site files | ${SITE_CHANGES:-unknown} |"
+            echo "| Edge report | ${EDGE:-not run} |"
+            echo "| CloudFront invalidation | ${INVALIDATION_SECONDS:-?}s |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Smoke test
+        run: .github/scripts/smoke-test.sh "$SITE_DOMAIN" "$SITE_BUCKET"

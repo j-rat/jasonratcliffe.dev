@@ -35,6 +35,9 @@ __pycache__/
 # Admin log viewer: local keys, password hash, TOTP secret
 tools/log-viewer/.local/
 
-# Local security-scan output (docs/DEPLOYMENT.md part 14)
+# Local security-scan output (docs/RUNBOOK.md section 9)
 .venv-sec/
 *.sarif
+
+# Local-only files (source resume .docx and anything else personal). Never committed.
+/private/
