@@ -117,4 +117,4 @@ throttling, the origin secret and the honeypot cover this threat model.
 
 ## Try it
 
-Press <kbd>`</kbd> anywhere on the site and run `arch`, or `threat-model E`. And yes, try `sudo`.
+Press <kbd>&#96;</kbd> anywhere on the site and run `arch`, or `threat-model E`. And yes, try `sudo`.
