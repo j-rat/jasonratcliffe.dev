@@ -118,3 +118,8 @@ throttling, the origin secret and the honeypot cover this threat model.
 ## Try it
 
 Press <kbd>&#96;</kbd> anywhere on the site and run `arch`, or `threat-model E`. And yes, try `sudo`.
+
+`threat-model` maps my experience to [STRIDE](/threat-model/), the six-category threat-modeling checklist:
+Spoofing, Tampering, Repudiation, Information disclosure, Denial of service and Elevation of privilege. Add a
+letter to see one category, so `threat-model E` shows Elevation of privilege: can someone gain more access than
+they were given?
