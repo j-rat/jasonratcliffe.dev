@@ -1,5 +1,6 @@
-# Scanner CLIs for .github/workflows/scan.yml. Regenerate (2-week age floor, hashes for the Linux runner):
-#   uv pip compile .github/security/requirements.in --generate-hashes --python-version 3.13 \
+# Scanner CLIs for .github/workflows/scan.yml. Regenerate (2-week age floor, hashes for the Linux runner).
+# --upgrade is required: without it uv keeps every version already in requirements.txt and changes nothing.
+#   uv pip compile .github/security/requirements.in --upgrade --generate-hashes --python-version 3.13 \
 #     --python-platform x86_64-manylinux_2_28 --exclude-newer <14 days ago> -o .github/security/requirements.txt
 semgrep
 checkov

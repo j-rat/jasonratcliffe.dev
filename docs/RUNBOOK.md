@@ -417,4 +417,7 @@ brew install trufflehog && trufflehog git file://. --results=verified,unknown
 - **By hand:** the TruffleHog version and SHA-256 and the ZAP image digest at the top of `scan.yml` (and the digest
   in `security.yml`). Take versions at least two weeks old; get the checksum from the release's `checksums.txt`
   and the digest with `docker pull` + `docker inspect --format '{{index .RepoDigests 0}}'`.
-- To regenerate the scanner lock, run the `uv pip compile` command in `.github/security/requirements.in`.
+- To regenerate the scanner lock, run the `uv pip compile` command in `.github/security/requirements.in`. Keep
+  `--upgrade`: without it uv reuses the versions already pinned and silently changes nothing (the generated file's
+  header omits the flag, so don't copy the command from there). Afterwards, check whether any dismissed Dependabot
+  alert on a scanner dependency now has a fix that Semgrep or Checkov allow.
