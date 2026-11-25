@@ -26,3 +26,13 @@ test('no view ever returns a full IP, and IPs sharing a prefix merge', () => {
   ]);
   assert.deepEqual(merged, [{ source: '192.0.2.0/24', country: 'US', requests: '5', errors: '2' }]);
 });
+
+test('cookie parsing ignores prototype names and malformed encoding', async () => {
+  const { parseCookies } = await import('../lib/http.mjs');
+  const c = parseCookies({ headers: { cookie: '__proto__=x; constructor=y; bad=%E0%A4%A; lv_session=abc' } });
+  assert.equal(Object.getPrototypeOf(c), null);
+  assert.equal(c.lv_session, 'abc');
+  assert.equal(c.__proto__, 'x');
+  assert.ok(!('bad' in c));
+  assert.equal({}.polluted, undefined);
+});

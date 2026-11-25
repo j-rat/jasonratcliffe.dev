@@ -24,11 +24,20 @@ export function send(res, status, body, type = 'text/plain; charset=utf-8', extr
 export const json = (res, status, obj, extra) => send(res, status, JSON.stringify(obj), 'application/json', extra);
 export const redirect = (res, location, extra = {}) => send(res, 302, '', 'text/plain', { Location: location, ...extra });
 
+/**
+ * Cookie header -> { name: value }. The result has no prototype, so a cookie named `__proto__` or
+ * `constructor` is just a key; values that aren't valid percent-encoding are skipped instead of throwing.
+ */
 export function parseCookies(req) {
-  const out = {};
+  const out = Object.create(null);
   for (const part of (req.headers.cookie ?? '').split(';')) {
     const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i <= 0) continue;
+    try {
+      out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    } catch {
+      // malformed %-encoding: ignore this cookie
+    }
   }
   return out;
 }

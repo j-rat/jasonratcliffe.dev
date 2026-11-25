@@ -18,10 +18,7 @@ if (process.argv.includes('--code')) {
   process.exit(0);
 }
 
-if (fs.existsSync(file) && !process.argv.includes('--reset')) {
-  console.error(`${file} already exists. Use --reset to create a new user, keys and secrets.`);
-  process.exit(1);
-}
+const reset = process.argv.includes('--reset');
 
 const username = process.env.LV_USERNAME || 'admin';
 const password = process.env.LV_PASSWORD || randomToken(18);
@@ -35,7 +32,15 @@ const config = {
 };
 
 fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-fs.writeFileSync(file, JSON.stringify(config, null, 2), { mode: 0o600 });
+// One step, no check-then-write gap: 'wx' fails if the file exists (refuse to overwrite), 'w' replaces it on --reset.
+try {
+  fs.writeFileSync(file, JSON.stringify(config, null, 2), { mode: 0o600, flag: reset ? 'w' : 'wx' });
+} catch (err) {
+  if (err.code !== 'EEXIST') throw err;
+  console.error(`${file} already exists. Use --reset to create a new user, keys and secrets.`);
+  process.exit(1);
+}
+if (reset) fs.chmodSync(file, 0o600); // an existing file keeps its old mode when replaced
 
 const uri = `otpauth://totp/resume-site:${encodeURIComponent(username)}?secret=${totpSecret}&issuer=resume-site%20log%20viewer`;
 console.log(`
