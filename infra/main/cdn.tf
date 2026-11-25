@@ -110,6 +110,12 @@ resource "aws_cloudfront_response_headers_policy" "security" {
       value    = "same-origin"
       override = true
     }
+    # Everything the pages load is same-origin (see local.csp), so cross-origin isolation costs nothing.
+    items {
+      header   = "Cross-Origin-Embedder-Policy"
+      value    = "require-corp"
+      override = true
+    }
     items {
       header   = "X-Permitted-Cross-Domain-Policies"
       value    = "none"
@@ -117,7 +123,11 @@ resource "aws_cloudfront_response_headers_policy" "security" {
     }
   }
 
+  # Origin details visitors don't need. CloudFront still adds its own "Server: CloudFront".
   remove_headers_config {
+    items {
+      header = "Server"
+    }
     items {
       header = "x-amz-server-side-encryption"
     }
@@ -130,8 +140,8 @@ resource "aws_cloudfront_response_headers_policy" "security" {
   }
 }
 
-# The PDF gets the same headers minus CSP: browser PDF viewers are embedded
-# plugins and a document-level object-src 'none' can stop them rendering.
+# The PDF gets the same headers minus CSP and COEP: browser PDF viewers are embedded
+# plugins, and a document-level object-src 'none' or require-corp can stop them rendering.
 resource "aws_cloudfront_response_headers_policy" "pdf" {
   name    = "${var.project}-pdf-headers"
   comment = "Security headers for the resume PDF (no CSP)"
@@ -158,13 +168,32 @@ resource "aws_cloudfront_response_headers_policy" "pdf" {
 
   custom_headers_config {
     items {
+      header   = "Permissions-Policy"
+      value    = local.permissions_policy
+      override = true
+    }
+    items {
+      header   = "Cross-Origin-Opener-Policy"
+      value    = "same-origin"
+      override = true
+    }
+    items {
       header   = "Cross-Origin-Resource-Policy"
       value    = "same-origin"
       override = true
     }
+    items {
+      header   = "X-Permitted-Cross-Domain-Policies"
+      value    = "none"
+      override = true
+    }
   }
 
+  # Origin details visitors don't need. CloudFront still adds its own "Server: CloudFront".
   remove_headers_config {
+    items {
+      header = "Server"
+    }
     items {
       header = "x-amz-server-side-encryption"
     }

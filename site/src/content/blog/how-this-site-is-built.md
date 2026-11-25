@@ -41,7 +41,11 @@ A CloudFront response headers policy attaches the following to every response:
 | `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; …` | No inline script, no third-party anything |
 | `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), …` | The site never needs device APIs |
 | `Cross-Origin-Opener-Policy` | `same-origin` | Isolates the browsing context |
+| `Cross-Origin-Embedder-Policy` | `require-corp` | Completes cross-origin isolation; free, because everything is same-origin |
 | `X-Content-Type-Options` | `nosniff` | No MIME confusion |
+
+CloudFront also strips the origin's `Server` header and S3's `x-amz-*` headers, so responses don't say
+what sits behind the CDN.
 
 Getting to `script-src 'self'` with no `'unsafe-inline'` took some build changes. Astro bundles every
 script into an external file, stylesheets are never inlined, and Markdown code highlighting uses Prism's

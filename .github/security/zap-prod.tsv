@@ -13,8 +13,8 @@
 10097	FAIL	Hash disclosure
 10054	FAIL	Cookie without SameSite (the site sets no cookies)
 10010	FAIL	Cookie without HttpOnly (the site sets no cookies)
-90004	IGNORE	COEP: not used (no cross-origin isolation needed)
-10036	IGNORE	Server: AmazonS3 names the origin type only, no version
+90004	FAIL	Site isolation: COEP, COOP and CORP are all set (PDF skips COEP)
+10036	FAIL	Server header leaking a version (CloudFront strips the origin's)
 10049	IGNORE	Cacheable content is intended (5-minute pages, immutable assets)
 10050	IGNORE	Retrieved from cache: CloudFront working as intended
 10015	IGNORE	Cache-control directives are intended
