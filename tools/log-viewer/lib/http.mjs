@@ -25,16 +25,16 @@ export const json = (res, status, obj, extra) => send(res, status, JSON.stringif
 export const redirect = (res, location, extra = {}) => send(res, 302, '', 'text/plain', { Location: location, ...extra });
 
 /**
- * Cookie header -> { name: value }. The result has no prototype, so a cookie named `__proto__` or
- * `constructor` is just a key; values that aren't valid percent-encoding are skipped instead of throwing.
+ * Cookie header -> Map of name -> value. A Map keeps attacker-chosen names (`__proto__`, `constructor`)
+ * as plain keys; values that aren't valid percent-encoding are skipped instead of throwing.
  */
 export function parseCookies(req) {
-  const out = Object.create(null);
+  const out = new Map();
   for (const part of (req.headers.cookie ?? '').split(';')) {
     const i = part.indexOf('=');
     if (i <= 0) continue;
     try {
-      out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+      out.set(part.slice(0, i).trim(), decodeURIComponent(part.slice(i + 1).trim()));
     } catch {
       // malformed %-encoding: ignore this cookie
     }

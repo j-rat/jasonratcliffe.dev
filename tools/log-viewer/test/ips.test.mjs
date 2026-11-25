@@ -30,9 +30,10 @@ test('no view ever returns a full IP, and IPs sharing a prefix merge', () => {
 test('cookie parsing ignores prototype names and malformed encoding', async () => {
   const { parseCookies } = await import('../lib/http.mjs');
   const c = parseCookies({ headers: { cookie: '__proto__=x; constructor=y; bad=%E0%A4%A; lv_session=abc' } });
-  assert.equal(Object.getPrototypeOf(c), null);
-  assert.equal(c.lv_session, 'abc');
-  assert.equal(c.__proto__, 'x');
-  assert.ok(!('bad' in c));
+  assert.ok(c instanceof Map);
+  assert.equal(c.get('lv_session'), 'abc');
+  assert.equal(c.get('__proto__'), 'x');
+  assert.equal(c.get('constructor'), 'y');
+  assert.ok(!c.has('bad'));
   assert.equal({}.polluted, undefined);
 });

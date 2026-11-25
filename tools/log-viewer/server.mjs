@@ -50,7 +50,7 @@ async function getJwks() {
 }
 
 function session(req) {
-  const sid = parseCookies(req).lv_session;
+  const sid = parseCookies(req).get('lv_session');
   const s = sid && sessions.get(sid);
   if (!s) return null;
   if (s.expires < Date.now()) {
@@ -102,7 +102,7 @@ async function app(req, res) {
   }
 
   if (route === 'GET /auth/callback') {
-    const txId = parseCookies(req).lv_tx;
+    const txId = parseCookies(req).get('lv_tx');
     const t = txId && transactions.get(txId);
     transactions.delete(txId);
     const done = { 'Set-Cookie': cookie('lv_tx', '', { maxAge: 0 }) };
