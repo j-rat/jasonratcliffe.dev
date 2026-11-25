@@ -1,6 +1,7 @@
 # GitHub Actions -> AWS with OIDC. No access keys exist anywhere.
 #
-#   plan role   assumable only by pull_request jobs in this repo; read-only + state lock
+#   plan role   assumable by pull_request jobs and by jobs on main (the plan shown before approval);
+#               read-only + state lock
 #   apply role  assumable only by jobs in the protected GitHub environment
 #
 # Workload roles the apply role creates (e.g. the contact Lambda's role) must carry the
@@ -43,7 +44,8 @@ data "aws_iam_policy_document" "trust_plan" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values   = ["${local.sub_prefix}:pull_request"]
+      # PRs, plus the main-branch plan that runs before the production approval. Still read-only.
+      values = ["${local.sub_prefix}:pull_request", "${local.sub_prefix}:ref:refs/heads/main"]
     }
   }
 }
@@ -102,7 +104,7 @@ resource "aws_iam_policy" "state_access" {
 
 resource "aws_iam_role" "plan" {
   name                 = "gha-${var.project}-plan"
-  description          = "GitHub Actions: terraform plan on pull requests (read-only)."
+  description          = "GitHub Actions: terraform plan on pull requests and before each production approval (read-only)."
   assume_role_policy   = data.aws_iam_policy_document.trust_plan.json
   max_session_duration = 3600
 }
@@ -281,6 +283,31 @@ data "aws_iam_policy_document" "deploy" {
       "events:ListTargetsByRule", "events:TagResource", "events:UntagResource", "events:ListTagsForResource",
     ]
     resources = ["arn:${local.partition}:events:${local.region_account}:rule/${local.workload_prefix}-*"]
+  }
+
+  statement {
+    sid = "Alarms"
+    actions = [
+      "cloudwatch:PutMetricAlarm", "cloudwatch:DeleteAlarms", "cloudwatch:TagResource", "cloudwatch:UntagResource",
+      "cloudwatch:ListTagsForResource",
+    ]
+    resources = ["arn:${local.partition}:cloudwatch:${local.region_account}:alarm:${local.workload_prefix}-*"]
+  }
+
+  statement {
+    sid       = "AlarmsRead"
+    actions   = ["cloudwatch:DescribeAlarms"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid = "AlertTopic" # topic and its subscriptions (subscription ARNs extend the topic ARN)
+    actions = [
+      "sns:CreateTopic", "sns:DeleteTopic", "sns:GetTopicAttributes", "sns:SetTopicAttributes",
+      "sns:Subscribe", "sns:Unsubscribe", "sns:GetSubscriptionAttributes", "sns:SetSubscriptionAttributes",
+      "sns:ListSubscriptionsByTopic", "sns:TagResource", "sns:UntagResource", "sns:ListTagsForResource",
+    ]
+    resources = ["arn:${local.partition}:sns:${local.region_account}:${local.workload_prefix}-*"]
   }
 
   statement {

@@ -2,8 +2,11 @@
 github_repository = "your-github-user/jasonratcliffe.dev"
 # domain_name     = "jasonratcliffe.dev"
 # github_environment = "production"
-# github_ids = { owner = 12345678, repository = 123456789 }  # only if the repo uses immutable OIDC subjects (guide 5.4)
+# github_ids = { owner = 12345678, repository = 123456789 }  # only if the repo uses immutable OIDC subjects (docs/SETUP.md 5.4)
 # create_github_oidc_provider = false   # if the account already has the GitHub OIDC provider
 
-# Set true ~24h after the first apply that adds the application = resume tag (see DEPLOYMENT.md part 11).
+# Set true ~24h after the first apply that adds the application = resume tag (see docs/RUNBOOK.md section 7).
 # activate_cost_tag = true
+
+# DNSSEC signing (docs/RUNBOOK.md section 6). Remove the DS record at the registrar before setting false.
+# dnssec_signing = true

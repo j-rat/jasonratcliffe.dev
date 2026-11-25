@@ -52,3 +52,9 @@ variable "activate_cost_tag" {
   type        = bool
   default     = false
 }
+
+variable "dnssec_signing" {
+  description = "Sign the zone with DNSSEC. Before setting false, remove the DS record at the registrar and wait for its TTL."
+  type        = bool
+  default     = true
+}

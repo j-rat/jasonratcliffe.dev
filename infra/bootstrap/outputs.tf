@@ -22,3 +22,14 @@ output "route53_nameservers" {
   description = "Paste these four values into Squarespace > Domains > DNS > Nameservers > Use custom nameservers."
   value       = aws_route53_zone.site.name_servers
 }
+
+output "dnssec_ds_record" {
+  description = "Add at the registrar (Squarespace > Domains > DNS > DNSSEC) only after signing is verified. Public data, not a secret."
+  value = {
+    key_tag     = aws_route53_key_signing_key.site.key_tag
+    algorithm   = aws_route53_key_signing_key.site.signing_algorithm_type
+    digest_type = aws_route53_key_signing_key.site.digest_algorithm_type
+    digest      = aws_route53_key_signing_key.site.digest_value
+    ds_record   = aws_route53_key_signing_key.site.ds_record
+  }
+}
