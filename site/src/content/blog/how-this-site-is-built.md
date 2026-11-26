@@ -109,12 +109,6 @@ would commit for:
 
 If anything turns up, the deploy stops.
 
-## What it costs
-
-At resume-site traffic it's close to nothing. Route 53 is $0.50/month for the zone. CloudFront, Lambda,
-API Gateway and SES fit comfortably in the free tiers. There's deliberately no WAF subscription:
-throttling, the origin secret and the honeypot cover this threat model.
-
 ## Tips
 
 Press <kbd>&#96;</kbd> anywhere on the site to open the terminal.
