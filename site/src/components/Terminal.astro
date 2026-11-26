@@ -64,6 +64,34 @@ const posts = (await getCollection('blog', ({ data }) => !data.draft))
   .out :global(.ok) { color: var(--ok); }
   .out :global(a) { color: var(--accent-strong); }
   .out :global(pre) { margin: 0; font: inherit; color: var(--accent); }
+  /* sudo easter egg (scripts/sudo-report.ts): alarm, then a dot-matrix printout on green-bar paper */
+  .term:global(.alarming) { animation: alarm-border 0.4s steps(2, jump-none) 4; }
+  @keyframes alarm-border {
+    from { border-color: var(--line-strong); }
+    to { border-color: var(--danger); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 24px 2px rgba(248, 113, 113, 0.55); }
+  }
+  .out :global(.alarm) {
+    color: var(--danger); font-weight: 700; letter-spacing: 0.04em;
+    animation: alarm-blink 0.4s steps(2, jump-none) 4;
+  }
+  @keyframes alarm-blink { from { opacity: 1; } to { opacity: 0.15; } }
+  .out :global(.printer) {
+    width: max-content; max-width: 100%; overflow-x: auto; margin: 8px 0;
+    font-size: clamp(0.5rem, 2.4vw, 0.8rem); line-height: 1.4; color: #6b7280; /* 52 columns fit a phone */
+    background: repeating-linear-gradient(#f5f3ea 0 2.8em, #d9eedb 2.8em 5.6em);
+    border-radius: 2px;
+  }
+  /* Ink: dark text broken into dots, like a 9-pin print head. */
+  .out :global(.printer .ink) {
+    color: #1f2937;
+    -webkit-mask-image: radial-gradient(circle, #000 60%, transparent 68%);
+    mask-image: radial-gradient(circle, #000 60%, transparent 68%);
+    -webkit-mask-size: 2px 2px;
+    mask-size: 2px 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .term:global(.alarming), .out :global(.alarm) { animation: none; }
+  }
   .line { display: flex; gap: 8px; align-items: baseline; }
   .ps1 { white-space: nowrap; color: var(--text-muted); }
   .ps1 .u { color: var(--ok); }

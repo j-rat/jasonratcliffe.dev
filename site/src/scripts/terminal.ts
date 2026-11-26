@@ -5,6 +5,7 @@ import {
 } from '../data/resume';
 import { stride } from '../data/threat-model';
 import { loadReport, leaks, contactStats } from './edge';
+import { printIncident, type Printer } from './sudo-report';
 
 type Part = string | { text: string; cls?: string; href?: string };
 type Line = Part[] | string;
@@ -40,6 +41,7 @@ export function initTerminal(): void {
   const history: string[] = [];
   let hIndex = 0;
   let greeted = false;
+  let printer: Printer | undefined; // the sudo incident report, while it prints
 
   const print = (line: Line = '') => {
     const p = document.createElement('p');
@@ -214,7 +216,18 @@ export function initTerminal(): void {
     exit: { help: 'close the terminal', run: () => dialog.close() },
     sudo: {
       help: '', hidden: true,
-      run: () => print([{ text: 'guest is not in the sudoers file. This incident will be reported. ', cls: 'err' }, { text: '(least privilege, as promised)', cls: 'dim' }]),
+      run: (args) => {
+        print([{ text: 'guest is not in the sudoers file. This incident will be reported. ', cls: 'err' }, { text: '(least privilege, as promised)', cls: 'dim' }]);
+        printer = printIncident({
+          out, dialog, attempt: args.join(' '), onTick: scrollDown,
+          onDone: (incident) => {
+            printer = undefined;
+            print([{ text: `Incident #${incident} filed.`, cls: 'dim' }]);
+            print('');
+            scrollDown();
+          },
+        });
+      },
     },
     'rm': { help: '', hidden: true, run: () => print([{ text: 'rm: read-only file system (immutable deploys ftw)', cls: 'err' }]) },
     nmap: { help: '', hidden: true, run: () => print([{ text: 'PORT    STATE  SERVICE\n443/tcp open   https  (everything else: filtered at the edge)', cls: 'dim' }]) },
@@ -228,6 +241,7 @@ export function initTerminal(): void {
   };
 
   const run = (raw: string) => {
+    printer?.finish(); // a new command tears off the report instead of interleaving with it
     const line = raw.trim();
     print([{ text: 'guest@jasonratcliffe:~$ ', cls: 'dim' }, { text: line, cls: 'cmd' }]);
     if (!line) return;
@@ -286,6 +300,7 @@ export function initTerminal(): void {
     if (!(e.target as HTMLElement).closest('a') && !window.getSelection()?.toString()) input.focus();
   });
 
+  dialog.addEventListener('close', () => printer?.finish());
   document.querySelectorAll('[data-terminal-open]').forEach((b) => b.addEventListener('click', open));
   dialog.querySelector('[data-terminal-close]')?.addEventListener('click', () => dialog.close());
   dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });

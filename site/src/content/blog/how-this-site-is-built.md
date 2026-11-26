@@ -115,11 +115,31 @@ At resume-site traffic it's close to nothing. Route 53 is $0.50/month for the zo
 API Gateway and SES fit comfortably in the free tiers. There's deliberately no WAF subscription:
 throttling, the origin secret and the honeypot cover this threat model.
 
-## Try it
+## Tips
 
-Press <kbd>&#96;</kbd> anywhere on the site and run `arch`, or `threat-model E`. And yes, try `sudo`.
+Press <kbd>&#96;</kbd> anywhere on the site to open the terminal.
 
-`threat-model` maps my experience to [STRIDE](/threat-model/), the six-category threat-modeling checklist:
-Spoofing, Tampering, Repudiation, Information disclosure, Denial of service and Elevation of privilege. Add a
-letter to see one category, so `threat-model E` shows Elevation of privilege: can someone gain more access than
-they were given?
+| Command | Description |
+|---|---|
+| `help` | List commands |
+| `whoami` | Who this is |
+| `summary` | Professional summary |
+| `experience [1\|2\|3]` | Roles; add a number for details |
+| `certs` | Certifications |
+| `skills` | Skills by area |
+| `projects` | Notable projects and talks |
+| `blog` | Posts on this site |
+| `threat-model [S\|T\|R\|I\|D\|E]` | STRIDE view of my career; add a letter for one category |
+| `arch` | How this site is hosted and secured |
+| `edge` | Probes seen at the edge in the last 24 hours, plus contact form defenses |
+| `resume` | Download the PDF resume |
+| `contact` | Jump to the contact form |
+| `linkedin` | Open LinkedIn |
+| `ls` | List files |
+| `cat <file>` | Print a file: `summary.txt`, `certs.txt`, `education.txt`, `awards.txt` |
+| `open <page>` | Open `architecture`, `threat-model`, `edge`, `blog` or `home` |
+| `history` | Command history |
+| `clear` | Clear the screen (or <kbd>Ctrl</kbd>+<kbd>L</kbd>) |
+| `exit` | Close the terminal (or <kbd>Esc</kbd>) |
+
+<kbd>Tab</kbd> completes commands and file names, and <kbd>↑</kbd>/<kbd>↓</kbd> walk the history.
