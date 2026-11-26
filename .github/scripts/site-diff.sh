@@ -27,8 +27,9 @@ list() { # pages in full, fingerprinted assets as a count
   [ -s "$file" ] || return 0
   assets=$(grep -c '^_astro/' "$file" || true)
   echo "**$label**"
-  grep -v '^_astro/' "$file" | head -n 40 | sed 's/.*/- `&`/'
-  [ "$assets" -gt 0 ] && echo "- $assets fingerprinted asset file(s) in \`_astro/\`"
+  # grep -v exits 1 when every entry is an asset; under pipefail that would end the script.
+  { grep -v '^_astro/' "$file" || true; } | head -n 40 | sed 's/.*/- `&`/'
+  if [ "$assets" -gt 0 ]; then echo "- $assets fingerprinted asset file(s) in \`_astro/\`"; fi
   echo
 }
 {
